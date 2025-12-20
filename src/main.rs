@@ -24,6 +24,9 @@ struct Vertex {
     g: c_float,
     b: c_float,
     a: c_float,
+    // vec2 Texture Coord
+    u: c_float,
+    v: c_float,
 }
 
 // Uniform value to pass to shader
@@ -99,6 +102,8 @@ fn load_model() -> Model {
                         g: 0.5,
                         b: 0.7,
                         a: 1.0,
+                        u: 0.5,
+                        v: 0.5,
                     });
                 }
             }
@@ -216,7 +221,7 @@ pub fn main() {
     // Also the other info of course
     let my_texture_create_info = TextureCreateInfo::new()
         .with_type(TextureType::_2D)
-        .with_format(TextureFormat::B8g8r8a8Unorm)
+        .with_format(TextureFormat::R8g8b8a8Unorm)
         .with_usage(TextureUsage::GRAPHICS_STORAGE_READ)
         .with_width(64)
         .with_height(64)
@@ -286,10 +291,18 @@ pub fn main() {
         .with_format(sdl3::gpu::VertexElementFormat::Float4)
         .with_offset(size_of::<f32>() as u32 * 3); //offset 3 f32's over to pick rgba out of xyzrgba vertex
 
+    // Vertex attribute for texture coordinate. a_tex_coord (for the vertex input state, which is for the pipeline)
+    let vertex_attribute3 = VertexAttribute::new()
+        .with_buffer_slot(0)
+        .with_location(2)
+        .with_format(sdl3::gpu::VertexElementFormat::Float2)
+        // .with_offset(0)
+        .with_offset(size_of::<f32>() as u32 * 7); // offset 7 f32's over? (Not sure, but guessing it needs to be after xyzrgba?)
+
     // Vertex input state (for the pipeline)
     let vertex_input_state = sdl3::gpu::VertexInputState::new()
         .with_vertex_buffer_descriptions(&[vertex_buffer_description])
-        .with_vertex_attributes(&[vertex_attribute1, vertex_attribute2]);
+        .with_vertex_attributes(&[vertex_attribute1, vertex_attribute2, vertex_attribute3]);
 
     // Describe the color target (for the target info, which is for the pipeline)
     let color_target_description =
@@ -300,6 +313,9 @@ pub fn main() {
     let target_info = GraphicsPipelineTargetInfo::new()
         .with_color_target_descriptions(&[color_target_description])
         .with_has_depth_stencil_target(false);
+    // .with_has_depth_stencil_target(false);
+
+    // TODO: Set up depth stencil
 
     // Create the graphics pipeline
     let pipeline = gpu_device
@@ -309,6 +325,7 @@ pub fn main() {
         .with_primitive_type(sdl3::gpu::PrimitiveType::TriangleList)
         .with_vertex_input_state(vertex_input_state)
         .with_target_info(target_info)
+        // .with_depth_stencil_state()
         .build()
         .unwrap();
 
