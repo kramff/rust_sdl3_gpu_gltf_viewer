@@ -217,12 +217,12 @@ pub fn main() {
         .unwrap();
 
     // TODO - working on texture. Still in the "what is going on" phase
-    // Not sure which format, need to get from gltf data
+    // Not sure which format, need to get from gltf data (I think?)
     // Also the other info of course
     let my_texture_create_info = TextureCreateInfo::new()
         .with_type(TextureType::_2D)
         .with_format(TextureFormat::R8g8b8a8Unorm)
-        .with_usage(TextureUsage::GRAPHICS_STORAGE_READ)
+        .with_usage(TextureUsage::SAMPLER)
         .with_width(64)
         .with_height(64)
         .with_layer_count_or_depth(1)
@@ -315,7 +315,7 @@ pub fn main() {
         .with_has_depth_stencil_target(false);
     // .with_has_depth_stencil_target(false);
 
-    // TODO: Set up depth stencil
+    // TODO: Set up depth stencil at some later point
 
     // Create the graphics pipeline
     let pipeline = gpu_device
@@ -339,6 +339,33 @@ pub fn main() {
     // Start a copy pass
     let copy_command_buffer = gpu_device.acquire_command_buffer().unwrap();
     let copy_pass = gpu_device.begin_copy_pass(&copy_command_buffer).unwrap();
+
+    // Transfer the texture data
+    let texture_transfer_buffer = gpu_device
+        .create_transfer_buffer()
+        .with_size((64 * 64 * size_of::<c_float>() * 4) as u32) // guessing at the size of the texture data right now
+        .with_usage(TransferBufferUsage::UPLOAD)
+        .build()
+        .unwrap();
+    let texture_transfer_info = TextureTransferInfo::new()
+        .with_transfer_buffer(&texture_transfer_buffer)
+        .with_offset(0)
+        .with_pixels_per_row(64)
+        .with_rows_per_layer(64);
+    let texture_region = TextureRegion::new()
+        .with_texture(&my_texture)
+        .with_width(64)
+        .with_height(64)
+        .with_depth(1);
+    // .with_mip_level(mip_level)
+    // .with_layer(0)
+    // .with_x(0)
+    // .with_y(0)
+    // .with_z(0)
+
+    // TODO - Need to fill the transfer buffer first
+    // (See below for how it was done with vertex and index data. Probably similar-ish)
+    copy_pass.upload_to_gpu_texture(texture_transfer_info, texture_region, true);
 
     // Iterate through primitives in meshes in models
     for model in model_vec {
