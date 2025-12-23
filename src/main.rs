@@ -125,13 +125,16 @@ fn load_model() -> Model {
             let image_source = image.source();
             // image_view should be the "view" of the buffer of the image data, I think...
             let image_view = match image_source {
-                gltf::image::Source::View { view, mime_type } => {
-                    println!("is view, {}", mime_type);
-                    println!("view index {}", view.index());
+                gltf::image::Source::View { view, mime_type: _ } => {
+                    // println!("is view, {}", mime_type);
+                    // println!("view index {}", view.index());
                     Some(view)
                 }
-                gltf::image::Source::Uri { uri: _, mime_type } => {
-                    println!("is uri, {}", mime_type.unwrap());
+                gltf::image::Source::Uri {
+                    uri: _,
+                    mime_type: _,
+                } => {
+                    // println!("is uri, {}", mime_type.unwrap());
                     None
                 }
             }
@@ -147,14 +150,14 @@ fn load_model() -> Model {
             );
 
             // Get the buffer of that view (not sure? Might actually just want the view)
-            let image_buffer = image_view.buffer();
-            println!(
-                "this image_buffer has index {}, length {}, name {}, extras {}",
-                image_buffer.index(),
-                image_buffer.length(),
-                image_buffer.name().unwrap_or("(no name)"),
-                image_buffer.extras().to_string()
-            );
+            let _image_buffer = image_view.buffer();
+            // println!(
+            //     "this image_buffer has index {}, length {}, name {}, extras {}",
+            //     image_buffer.index(),
+            //     image_buffer.length(),
+            //     image_buffer.name().unwrap_or("(no name)"),
+            //     image_buffer.extras().to_string()
+            // );
 
             // println!("{:?}", image_source);
 
@@ -167,12 +170,12 @@ fn load_model() -> Model {
             reader.read_morph_targets(); */
 
             // Print info (can be removed at some point)
-            println!(
-                "Primitive added with {} vertices and {} indices. Size of the indices array in bytes is {}",
-                vertices.len(),
-                indices.len(),
-                indices.len() * size_of::<u32>()
-            );
+            // println!(
+            //     "Primitive added with {} vertices and {} indices. Size of the indices array in bytes is {}",
+            //     vertices.len(),
+            //     indices.len(),
+            //     indices.len() * size_of::<u32>()
+            // );
 
             // Make a primitive struct instance
             primitive_vec.push(Primitive {
@@ -200,11 +203,7 @@ pub fn main() {
 
     // Create a window
     let window = video_subsystem
-        .window(
-            "Platform Journey 5 - The Journey Of Over Time And Space",
-            500,
-            500,
-        )
+        .window("Rust SDL3 GPU - GLTF Model Viewer", 500, 500)
         .resizable()
         .position_centered()
         .build()
@@ -365,6 +364,15 @@ pub fn main() {
 
     // TODO - Need to fill the transfer buffer first
     // (See below for how it was done with vertex and index data. Probably similar-ish)
+    let mut texture_buffer_mem_map = texture_transfer_buffer.map(&gpu_device, true);
+    let texture_buffer_mem_map_mem_mut: &mut [_] = texture_buffer_mem_map.mem_mut();
+    for pixel_coord in 0..(64 * 64) {
+        // Using a fixed color for every pixel, should instead be from the gltf texture image
+        texture_buffer_mem_map_mem_mut[pixel_coord] = [0.7f32, 0.4f32, 0.1f32, 1.0f32];
+    }
+    texture_buffer_mem_map.unmap();
+
+    // Upload the data
     copy_pass.upload_to_gpu_texture(texture_transfer_info, texture_region, true);
 
     // Iterate through primitives in meshes in models
@@ -640,6 +648,10 @@ pub fn main() {
 
             // Bind the index buffer
             render_pass.bind_index_buffer(&buffer_bindings_index, IndexElementSize::_32BIT);
+
+            // Bind the texture buffer? (Not sure)
+            // I feel like it shouldn't need to .clone() the texture
+            render_pass.bind_fragment_storage_textures(0, &[my_texture.clone()]);
 
             // Issue the draw call using the indexes as well as the
             render_pass.draw_indexed_primitives(primitive_buffer_struct.index_count, 1, 0, 0, 0);

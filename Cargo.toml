@@ -1,5 +1,5 @@
 [package]
-name = "rust_sdl_test"
+name = "rust_sdl3_gpu_gltf_viewer"
 version = "0.1.0"
 edition = "2024"
 
