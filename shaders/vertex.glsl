@@ -1,6 +1,8 @@
 #version 460
 
-// 
+// To compile: 
+// glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv
+
 layout (location = 0) in vec3 a_position;
 layout (location = 1) in vec4 a_color;
 layout (location = 2) in vec2 a_tex_coord;

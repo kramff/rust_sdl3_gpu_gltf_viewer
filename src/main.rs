@@ -228,6 +228,23 @@ pub fn main() {
         .with_num_levels(1);
     let my_texture = gpu_device.create_texture(my_texture_create_info).unwrap();
 
+    // TODO - sampler?
+    let my_sampler_create_info = SamplerCreateInfo::new()
+        .with_min_filter(filter)
+        .with_mag_filter(filter)
+        .with_mipmap_mode(mode)
+        .with_address_mode_u(mode)
+        .with_address_mode_v(mode)
+        .with_address_mode_w(mode)
+        .with_mip_lod_bias(value)
+        .with_max_anisotropy(value)
+        .with_compare_op(value)
+        .with_min_lod(value)
+        .with_max_lod(value)
+        .with_enable_anisotropy(enable)
+        .with_enable_compare(enable);
+    let my_sampler = gpu_device.create_sampler(my_sampler_create_info).unwrap();
+
     // Load the vertex shader code
     let vertex_shader_code = include_bytes!("../shaders/vertex.spv");
 
@@ -261,7 +278,7 @@ pub fn main() {
             sdl3::gpu::ShaderStage::Fragment,
         )
         .with_entrypoint(c"main")
-        .with_samplers(0)
+        .with_samplers(1)
         .with_storage_buffers(0)
         .with_uniform_buffers(1)
         .build()
@@ -362,13 +379,26 @@ pub fn main() {
     // .with_y(0)
     // .with_z(0)
 
+    let mut texture_color_rotate: u8 = 0;
     // TODO - Need to fill the transfer buffer first
     // (See below for how it was done with vertex and index data. Probably similar-ish)
     let mut texture_buffer_mem_map = texture_transfer_buffer.map(&gpu_device, true);
     let texture_buffer_mem_map_mem_mut: &mut [_] = texture_buffer_mem_map.mem_mut();
     for pixel_coord in 0..(64 * 64) {
         // Using a fixed color for every pixel, should instead be from the gltf texture image
-        texture_buffer_mem_map_mem_mut[pixel_coord] = [0.7f32, 0.4f32, 0.1f32, 1.0f32];
+        if texture_color_rotate == 0 {
+            texture_buffer_mem_map_mem_mut[pixel_coord] = [0.7f32, 0.4f32, 0.1f32, 1.0f32];
+        }
+        if texture_color_rotate == 1 {
+            texture_buffer_mem_map_mem_mut[pixel_coord] = [0.2f32, 0.9f32, 0.1f32, 1.0f32];
+        }
+        if texture_color_rotate == 2 {
+            texture_buffer_mem_map_mem_mut[pixel_coord] = [0.3f32, 0.4f32, 0.8f32, 1.0f32];
+        }
+        texture_color_rotate += 1;
+        if texture_color_rotate == 3 {
+            texture_color_rotate = 0;
+        }
     }
     texture_buffer_mem_map.unmap();
 
@@ -651,7 +681,13 @@ pub fn main() {
 
             // Bind the texture buffer? (Not sure)
             // I feel like it shouldn't need to .clone() the texture
-            render_pass.bind_fragment_storage_textures(0, &[my_texture.clone()]);
+            // render_pass.bind_fragment_storage_textures(0, &[my_texture.clone()]);
+
+            // Bind sampler? (Not sure)
+            let texture_sampler_binding = TextureSamplerBinding::new()
+                .with_texture(&my_texture)
+                .with_sampler(&my_sampler);
+            render_pass.bind_fragment_samplers(0, texture_sampler_binding);
 
             // Issue the draw call using the indexes as well as the
             render_pass.draw_indexed_primitives(primitive_buffer_struct.index_count, 1, 0, 0, 0);
