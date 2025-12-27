@@ -7,15 +7,15 @@ layout (location = 0) in vec4 v_color;
 layout (location = 1) in vec2 v_tex_coord;
 layout (location = 0) out vec4 FragColor;
 
-layout(std140, set = 3, binding = 0) uniform UniformBlock {
-    float time;
-};
+// layout(std140, set = 3, binding = 0) uniform UniformBlock {
+//     float time;
+// };
 
 // layout(std140, set = 3, binding = 1) uniform UniformBlock2 {
 //     // gsampler2d texture_sampler;
 //     sampler texture_sampler;
 // }; 
-layout(binding = 1) uniform sampler2D texture_sampler;
+layout (set = 2, binding = 0) uniform sampler2D texture_sampler;
 
 void main()
 {

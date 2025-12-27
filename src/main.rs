@@ -30,9 +30,9 @@ struct Vertex {
 }
 
 // Uniform value to pass to shader
-struct UniformBufferTime {
-    time: c_float,
-}
+// struct UniformBufferTime {
+//     time: c_float,
+// }
 struct UniformBufferPosition {
     x_pos: c_float,
     y_pos: c_float,
@@ -100,10 +100,12 @@ fn load_model() -> Model {
                         z: vertex_position[2],
                         r: 0.5,
                         g: 0.5,
-                        b: 0.7,
+                        b: 0.5,
                         a: 1.0,
-                        u: 0.5,
-                        v: 0.5,
+                        // u: 0.5,
+                        // v: 0.5,
+                        u: vertex_position[0],
+                        v: vertex_position[1],
                     });
                 }
             }
@@ -230,19 +232,19 @@ pub fn main() {
 
     // TODO - sampler?
     let my_sampler_create_info = SamplerCreateInfo::new()
-        .with_min_filter(filter)
-        .with_mag_filter(filter)
-        .with_mipmap_mode(mode)
-        .with_address_mode_u(mode)
-        .with_address_mode_v(mode)
-        .with_address_mode_w(mode)
-        .with_mip_lod_bias(value)
-        .with_max_anisotropy(value)
-        .with_compare_op(value)
-        .with_min_lod(value)
-        .with_max_lod(value)
-        .with_enable_anisotropy(enable)
-        .with_enable_compare(enable);
+        .with_min_filter(Filter::Nearest)
+        .with_mag_filter(Filter::Nearest)
+        .with_mipmap_mode(SamplerMipmapMode::Nearest)
+        .with_address_mode_u(SamplerAddressMode::Repeat)
+        .with_address_mode_v(SamplerAddressMode::Repeat)
+        .with_address_mode_w(SamplerAddressMode::Repeat);
+    // .with_mip_lod_bias(value)
+    // .with_max_anisotropy(value)
+    // .with_compare_op(value)
+    // .with_min_lod(value)
+    // .with_max_lod(value)
+    // .with_enable_anisotropy(enable)
+    // .with_enable_compare(enable);
     let my_sampler = gpu_device.create_sampler(my_sampler_create_info).unwrap();
 
     // Load the vertex shader code
@@ -280,7 +282,8 @@ pub fn main() {
         .with_entrypoint(c"main")
         .with_samplers(1)
         .with_storage_buffers(0)
-        .with_uniform_buffers(1)
+        // .with_uniform_buffers(1)
+        .with_uniform_buffers(0)
         .build()
         .unwrap();
 
@@ -380,6 +383,7 @@ pub fn main() {
     // .with_z(0)
 
     let mut texture_color_rotate: u8 = 0;
+
     // TODO - Need to fill the transfer buffer first
     // (See below for how it was done with vertex and index data. Probably similar-ish)
     let mut texture_buffer_mem_map = texture_transfer_buffer.map(&gpu_device, true);
@@ -387,13 +391,13 @@ pub fn main() {
     for pixel_coord in 0..(64 * 64) {
         // Using a fixed color for every pixel, should instead be from the gltf texture image
         if texture_color_rotate == 0 {
-            texture_buffer_mem_map_mem_mut[pixel_coord] = [0.7f32, 0.4f32, 0.1f32, 1.0f32];
+            texture_buffer_mem_map_mem_mut[pixel_coord] = [1.0f32, 1.0f32, 0.1f32, 1.0f32];
         }
         if texture_color_rotate == 1 {
-            texture_buffer_mem_map_mem_mut[pixel_coord] = [0.2f32, 0.9f32, 0.1f32, 1.0f32];
+            texture_buffer_mem_map_mem_mut[pixel_coord] = [1.0f32, 0.1f32, 1.0f32, 1.0f32];
         }
         if texture_color_rotate == 2 {
-            texture_buffer_mem_map_mem_mut[pixel_coord] = [0.3f32, 0.4f32, 0.8f32, 1.0f32];
+            texture_buffer_mem_map_mem_mut[pixel_coord] = [0.3f32, 1.0f32, 1.0f32, 1.0f32];
         }
         texture_color_rotate += 1;
         if texture_color_rotate == 3 {
@@ -516,7 +520,7 @@ pub fn main() {
     copy_command_buffer.submit().unwrap();
 
     // Create the time uniform
-    let mut time_uniform = UniformBufferTime { time: 0.0 };
+    // let mut time_uniform = UniformBufferTime { time: 0.0 };
 
     // Create the position uniform
     let mut position_uniform = UniformBufferPosition {
@@ -529,7 +533,7 @@ pub fn main() {
     // Initialize game variables
     let mut player_x = 0.0;
     let mut player_y = 0.0;
-    let mut game_ticks = 0u32;
+    // let mut game_ticks = 0u32;
 
     // Keyboard state variables
     let mut key_up = false;
@@ -540,7 +544,7 @@ pub fn main() {
     // Event handling
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
-        game_ticks += 1;
+        // game_ticks += 1;
         for event in event_pump.poll_iter() {
             match event {
                 // Esc - Quit button
@@ -623,10 +627,10 @@ pub fn main() {
         let mut command_buffer = gpu_device.acquire_command_buffer().unwrap();
 
         // Update the time value in the time uniform
-        time_uniform.time = game_ticks as f32 * 0.1;
+        // time_uniform.time = game_ticks as f32 * 0.1;
 
         // Push the time uniform data
-        command_buffer.push_fragment_uniform_data(0, &time_uniform);
+        // command_buffer.push_fragment_uniform_data(0, &time_uniform);
 
         // Update the position value in the position uniform
         position_uniform.x_pos = player_x;
@@ -687,7 +691,7 @@ pub fn main() {
             let texture_sampler_binding = TextureSamplerBinding::new()
                 .with_texture(&my_texture)
                 .with_sampler(&my_sampler);
-            render_pass.bind_fragment_samplers(0, texture_sampler_binding);
+            render_pass.bind_fragment_samplers(0, &[texture_sampler_binding]);
 
             // Issue the draw call using the indexes as well as the
             render_pass.draw_indexed_primitives(primitive_buffer_struct.index_count, 1, 0, 0, 0);
