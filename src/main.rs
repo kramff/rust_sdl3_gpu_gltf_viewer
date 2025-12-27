@@ -391,16 +391,28 @@ pub fn main() {
     for pixel_coord in 0..(64 * 64) {
         // Using a fixed color for every pixel, should instead be from the gltf texture image
         if texture_color_rotate == 0 {
-            texture_buffer_mem_map_mem_mut[pixel_coord] = [1.0f32, 1.0f32, 0.1f32, 1.0f32];
+            texture_buffer_mem_map_mem_mut[pixel_coord] = [255u8, 0u8, 0u8, 255u8];
         }
         if texture_color_rotate == 1 {
-            texture_buffer_mem_map_mem_mut[pixel_coord] = [1.0f32, 0.1f32, 1.0f32, 1.0f32];
+            texture_buffer_mem_map_mem_mut[pixel_coord] = [0u8, 255u8, 0u8, 255u8];
         }
         if texture_color_rotate == 2 {
-            texture_buffer_mem_map_mem_mut[pixel_coord] = [0.3f32, 1.0f32, 1.0f32, 1.0f32];
+            texture_buffer_mem_map_mem_mut[pixel_coord] = [0u8, 0u8, 255u8, 255u8];
+        }
+        if texture_color_rotate == 3 {
+            texture_buffer_mem_map_mem_mut[pixel_coord] = [255u8, 255u8, 0u8, 255u8];
+        }
+        if texture_color_rotate == 4 {
+            texture_buffer_mem_map_mem_mut[pixel_coord] = [255u8, 0u8, 255u8, 255u8];
+        }
+        if texture_color_rotate == 5 {
+            texture_buffer_mem_map_mem_mut[pixel_coord] = [0u8, 255u8, 255u8, 255u8];
+        }
+        if texture_color_rotate == 6 {
+            texture_buffer_mem_map_mem_mut[pixel_coord] = [180u8, 50u8, 90u8, 255u8];
         }
         texture_color_rotate += 1;
-        if texture_color_rotate == 3 {
+        if texture_color_rotate == 7 {
             texture_color_rotate = 0;
         }
     }
