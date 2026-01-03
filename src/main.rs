@@ -366,43 +366,44 @@ pub fn main() {
     let depth_stencil_texture_create_info = TextureCreateInfo::new()
         .with_type(TextureType::_2D)
         .with_format(TextureFormat::D16Unorm)
-        .with_usage(TextureUsage::DEPTH_STENCIL_TARGET)
+        .with_usage(TextureUsage::SAMPLER | TextureUsage::DEPTH_STENCIL_TARGET)
         .with_width(512)
         .with_height(512)
         .with_layer_count_or_depth(1)
-        .with_num_levels(1);
+        .with_num_levels(1)
+        .with_sample_count(SampleCount::NoMultiSampling);
 
     let mut depth_stencil_texture = gpu_device
         .create_texture(depth_stencil_texture_create_info)
         .unwrap();
 
     // Set up depth stencil
-    let depth_stencil_target_info =
-        DepthStencilTargetInfo::new().with_texture(&mut depth_stencil_texture);
-    // .with_clear_depth(clear_depth)
-    // .with_load_op(value)
-    // .with_store_op(value)
-    // .with_stencil_load_op(value)
-    // .with_stencil_store_op(value)
-    // .with_cycle(cycle)
-    // .with_clear_stencil(clear_stencil)
+    let depth_stencil_target_info = DepthStencilTargetInfo::new()
+        .with_texture(&mut depth_stencil_texture)
+        .with_clear_depth(1.0)
+        .with_load_op(LoadOp::CLEAR)
+        .with_store_op(StoreOp::STORE)
+        .with_stencil_load_op(LoadOp::CLEAR)
+        .with_stencil_store_op(StoreOp::STORE)
+        .with_cycle(true)
+        .with_clear_stencil(0);
 
-    let depth_stencil_state = DepthStencilState::new();
-    // .with_compare_op(value)
-    // .with_back_stencil_state(value)
-    // .with_front_stencil_state(value)
-    // .with_compare_mask(value)
-    // .with_write_mask(value)
-    // .with_enable_depth_test(value)
-    // .with_enable_depth_write(value)
+    let depth_stencil_state = DepthStencilState::new()
+        .with_compare_op(CompareOp::LessOrEqual)
+        // .with_back_stencil_state(value)
+        // .with_front_stencil_state(value)
+        // .with_compare_mask(value)
+        // .with_write_mask(value)
+        .with_enable_depth_test(true)
+        .with_enable_depth_write(true);
     // .with_enable_stencil_test(value)
 
     // Make the target info
     let target_info = GraphicsPipelineTargetInfo::new()
         .with_color_target_descriptions(&[color_target_description])
-        .with_has_depth_stencil_target(false);
-    // .with_has_depth_stencil_target(true)
-    // .with_depth_stencil_format(TextureFormat::D16Unorm);
+        // .with_has_depth_stencil_target(false);
+        .with_has_depth_stencil_target(true)
+        .with_depth_stencil_format(TextureFormat::D16Unorm);
 
     // Create the graphics pipeline
     let pipeline = gpu_device
@@ -412,7 +413,7 @@ pub fn main() {
         .with_primitive_type(sdl3::gpu::PrimitiveType::TriangleList)
         .with_vertex_input_state(vertex_input_state)
         .with_target_info(target_info)
-        // .with_depth_stencil_state(depth_stencil_state)
+        .with_depth_stencil_state(depth_stencil_state)
         .build()
         .unwrap();
 
@@ -807,7 +808,11 @@ pub fn main() {
 
         // Begin a render pass
         let render_pass = gpu_device
-            .begin_render_pass(&command_buffer, &[color_target_info], None)
+            .begin_render_pass(
+                &command_buffer,
+                &[color_target_info],
+                Some(&depth_stencil_target_info),
+            )
             .unwrap();
 
         // Bind the graphics pipeline
