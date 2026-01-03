@@ -17,11 +17,31 @@ layout(std140, set = 1, binding = 0) uniform UniformBlock {
 
 void main()
 {
-    // Position based on x_pos and y_pos uniforms in a faked 3d scuffed version for now
-    gl_Position = vec4(a_position[0] * cos(x_pos) + a_position[2] * sin(x_pos), a_position[1] * cos(y_pos) + a_position[2] * sin(y_pos), a_position[2], 1.0f);
+    // Rotate around Y axis (XZ plane rotated)
+    vec4 a_position_rotated_1 = vec4(
+        a_position[0] * cos(x_pos) - a_position[2] * sin(x_pos),
+        a_position[1],
+        a_position[2] * cos(x_pos) + a_position[0] * sin(x_pos),
+        1.0f
+    );
 
-    // Position based on x_pos and y_pos just translating horizontal and vertical
-    // gl_Position = vec4(a_position[0] + x_pos, a_position[1] + y_pos, a_position[2], 1.0f);
+    // Rotate around X axis (YZ plane rotated)
+    vec4 a_position_rotated_2 = vec4(
+        a_position_rotated_1[0],
+        a_position_rotated_1[1] * cos(y_pos) - a_position_rotated_1[2] * sin(y_pos),
+        a_position_rotated_1[2] * cos(y_pos) + a_position_rotated_1[1] * sin(y_pos),
+        1.0f
+    );
+    gl_Position = a_position_rotated_2;
+
+    // Make vertices appear close / far depending on the Z position (projected)
+    // vec4 a_position_z_projected = vec4(
+    //     a_position_rotated_2[0] / (a_position_rotated_2[2] + 2) * 2,
+    //     a_position_rotated_2[1] / (a_position_rotated_2[2] + 2) * 2,
+    //     a_position_rotated_2[2],
+    //     1.0f
+    // );
+    // gl_Position = a_position_z_projected;
 
     // Pass vertex color to fragment shader
     v_color = a_color;
