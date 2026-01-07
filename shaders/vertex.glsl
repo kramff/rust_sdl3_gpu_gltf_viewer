@@ -32,7 +32,7 @@ void main()
         a_position_rotated_1[2] * cos(y_pos) + a_position_rotated_1[1] * sin(y_pos),
         1.0f
     );
-    gl_Position = a_position_rotated_2;
+    // gl_Position = a_position_rotated_2;
 
     // Make vertices appear close / far depending on the Z position (projected)
     // vec4 a_position_z_projected = vec4(
@@ -42,6 +42,16 @@ void main()
     //     1.0f
     // );
     // gl_Position = a_position_z_projected;
+
+    // Transform to try and match what the depth buffer is expecting (??)
+    vec4 a_position_transformed_for_depth_buffer = vec4(
+        a_position_rotated_2.x,
+        a_position_rotated_2.y,
+        // Just kinda guessing at these numbers, trying to fit the z values into 0.0 to 1.0 so the depth values are within those bounds as well
+        (1.5f - a_position_rotated_2.z) * 0.3,
+        1.0f
+    );
+    gl_Position = a_position_transformed_for_depth_buffer;
 
     // Pass vertex color to fragment shader
     v_color = a_color;
