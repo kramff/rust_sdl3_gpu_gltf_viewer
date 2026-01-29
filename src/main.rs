@@ -43,6 +43,7 @@ struct UniformBufferPosition {
 struct Primitive {
     vertices: Vec<Vertex>,
     indices: Vec<u32>,
+    image_index: usize,
 }
 
 #[derive(Debug)]
@@ -62,11 +63,16 @@ struct PrimitiveBufferStruct {
     vertex_count: u32,
     index_buffer: Buffer,
     index_count: u32,
+    image_index: usize,
 }
 
 fn load_model() -> Model {
     // Open model file
     let (model_gltf, buffers, images) = gltf::import("models/Low-Poly-Base_copy.glb").unwrap();
+    // let (model_gltf, buffers, images) = gltf::import("models/Avocado.glb").unwrap();
+    // let (model_gltf, buffers, images) = gltf::import("models/ABeautifulGame.glb").unwrap();
+    // let (model_gltf, buffers, images) =
+    //     gltf::import("models/GlassHurricaneCandleHolder.glb").unwrap();
     for image in images.iter() {
         println!(
             "image here with format {:?} width {} height {}",
@@ -74,9 +80,21 @@ fn load_model() -> Model {
         );
     }
 
+    // Vec for keeping track of which image goes with with texture, so that later the data structure for the primitive can look up the image it need via it's texture
+    let mut texture_source_index_vec = Vec::new();
+
     let textures = model_gltf.textures();
     for texture in textures.clone() {
+        // Texture indicies go from 0 to 6 with no doubles
         println!("Texture - index is: {:?}", texture.index());
+        let tex_source = texture.source();
+        // Texture source indices go from 0 to 5 with a doubled 1
+        println!("Texture source index is {}", tex_source.index());
+        texture_source_index_vec.push(tex_source.index());
+        // TODO - I think this is important, there are more textures than images. I think the texture sources are actually matching up with the images but not sure yet
+        // TODO - figure out what material, texture, image actually mean:
+        // https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html
+
         // texture.sampler();
         // let texture_sampler = texture.sampler();
         // dbg!(texture_sampler.mag_filter());
@@ -92,6 +110,9 @@ fn load_model() -> Model {
     } */
 
     let mut mesh_vec: Vec<Mesh> = Vec::new();
+
+    // TODO - animations!
+    // for animation in model_gltf.animations() {}
 
     // Loop through meshes in the model
     for mesh in model_gltf.meshes() {
@@ -141,6 +162,28 @@ fn load_model() -> Model {
             }
 
             let material = primitive.material();
+            // println!("material index is: {}", material.index().unwrap());
+
+            // material -> pbr metallic roughness -> base color texture -> option -> info -> texture -> index
+            let texture_index = material
+                .pbr_metallic_roughness()
+                .base_color_texture()
+                .unwrap()
+                .texture()
+                .index();
+
+            println!("texture_index of this material is {} ", texture_index);
+
+            let image_index_for_this_primitive = texture_source_index_vec[texture_index];
+
+            // TODO - Working on trying to get the texture source along with the primitive so the primitives don't need to be hardcoded to which texture to use
+            // Looking at here to try and figure this out https://github.com/whoisryosuke/wgpu-hello-world/blob/play/gltf-r2/src/resources.rs
+            // let texture_source = material
+            //     .pbr_metallic_roughness()
+            //     .base_color_texture()
+            //     .map(|tex| tex.texture().source().source())
+            //     .expect("texture issue");
+
             // println!("material - index is: {:?}", material.index());
             let texture = textures
                 .clone()
@@ -165,8 +208,10 @@ fn load_model() -> Model {
                 }
             }
             .unwrap();
+            // The unwrap() is assuming it's a image view and not a uri
             println!(
                 "image_view has index {}, length {}, offset {}, stride {}, name {}, extras {}",
+                // image_view.index() seems to be way too high (7, 15, 15, 31, 39, 47, 55)
                 image_view.index(),
                 image_view.length(),
                 image_view.offset(),
@@ -174,9 +219,11 @@ fn load_model() -> Model {
                 image_view.name().unwrap_or("(no name)"),
                 image_view.extras().to_string()
             );
+            // image_view.buffer().index() seems to be always 0
+            // println!("image view buffer index is {}", image_view.buffer().index());
 
             // Get the buffer of that view (not sure? Might actually just want the view)
-            let _image_buffer = image_view.buffer();
+            // let _image_buffer = image_view.buffer();
             // println!(
             //     "this image_buffer has index {}, length {}, name {}, extras {}",
             //     image_buffer.index(),
@@ -207,6 +254,7 @@ fn load_model() -> Model {
             primitive_vec.push(Primitive {
                 vertices: vertices,
                 indices: indices,
+                image_index: image_index_for_this_primitive,
             });
         }
         mesh_vec.push(Mesh {
@@ -597,10 +645,14 @@ pub fn main() {
                     vertex_count: primitive.vertices.len() as u32,
                     index_buffer: index_buffer,
                     index_count: primitive.indices.len() as u32,
+                    image_index: primitive.image_index,
                 });
             }
         }
         for image in model.images_vec {
+            // let texture_format = match image.format {
+            //     gltf::image::Format::R8G8B8 => {TextureFormat::R8g8b8}
+            // };
             let my_texture_create_info = TextureCreateInfo::new()
                 .with_type(TextureType::_2D)
                 .with_format(TextureFormat::R8g8b8a8Unorm)
@@ -652,12 +704,26 @@ pub fn main() {
             let mut texture_buffer_mem_map = texture_transfer_buffer.map(&gpu_device, true);
             let texture_buffer_mem_map_mem_mut: &mut [_] = texture_buffer_mem_map.mem_mut();
             for pixel_coord in 0..(image.width * image.height) as usize {
-                texture_buffer_mem_map_mem_mut[pixel_coord] = [
-                    image.pixels[pixel_coord * 4],
-                    image.pixels[pixel_coord * 4 + 1],
-                    image.pixels[pixel_coord * 4 + 2],
-                    image.pixels[pixel_coord * 4 + 3],
-                ];
+                // If
+                match image.format {
+                    gltf::image::Format::R8G8B8 => {
+                        texture_buffer_mem_map_mem_mut[pixel_coord] = [
+                            image.pixels[pixel_coord * 3],
+                            image.pixels[pixel_coord * 3 + 1],
+                            image.pixels[pixel_coord * 3 + 2],
+                            u8::MAX,
+                        ];
+                    }
+                    gltf::image::Format::R8G8B8A8 => {
+                        texture_buffer_mem_map_mem_mut[pixel_coord] = [
+                            image.pixels[pixel_coord * 4],
+                            image.pixels[pixel_coord * 4 + 1],
+                            image.pixels[pixel_coord * 4 + 2],
+                            image.pixels[pixel_coord * 4 + 3],
+                        ];
+                    }
+                    _ => panic!("Image format not supported yet: {:?}", image.format),
+                }
             }
             texture_buffer_mem_map.unmap();
             copy_pass.upload_to_gpu_texture(texture_transfer_info, texture_region, true);
@@ -841,16 +907,18 @@ pub fn main() {
             // render_pass.bind_fragment_storage_textures(0, &[my_texture.clone()]);
 
             // TODO - right now I am manually picking which texture for which primitive, need to figure that out in code
-            let tex_to_use = match index {
-                0 => 0,
-                1 => 1,
-                2 => 1,
-                3 => 2,
-                4 => 3,
-                5 => 4,
-                6 => 5,
-                _ => 0,
-            };
+            // let tex_to_use = match index {
+            //     0 => 1,
+            //     1 => 1,
+            //     2 => 1,
+            //     3 => 2,
+            //     4 => 3,
+            //     5 => 4,
+            //     6 => 5,
+            //     _ => 0,
+            // };
+
+            let tex_to_use = primitive_buffer_struct.image_index;
 
             // Bind sampler? (Not sure)
             let texture_sampler_binding = TextureSamplerBinding::new()
