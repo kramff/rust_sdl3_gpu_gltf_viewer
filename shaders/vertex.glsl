@@ -44,11 +44,31 @@ void main()
     // gl_Position = a_position_z_projected;
 
     // Transform to try and match what the depth buffer is expecting (??)
+    // vec4 a_position_transformed_for_depth_buffer = vec4(
+    //     a_position_rotated_2.x,
+    //     a_position_rotated_2.y,
+    //     // Just kinda guessing at these numbers, trying to fit the z values into 0.0 to 1.0 so the depth values are within those bounds as well
+    //     (1.5f - a_position_rotated_2.z) * 0.3,
+    //     1.0f
+    // );
+    // Newer version that doesn't flip Z backwards
+
+    // https://learnopengl.com/Advanced-OpenGL/Depth-testing
+    // Z from 3d coordinates, plus a bit to push away from camera
+    float one_over_z = 1.0f / (a_position_rotated_2.z + 1.1);
+    // Near set to 0.1;
+    float one_over_near = 1.0f / 0.1f;
+    // Far set to 100;
+    float one_over_far = 1.0f / 10.0f;
+    // Depth = (1 / z - 1 / near) / (1 / far - 1 / near)
+    float depth = (one_over_z - one_over_near) / (one_over_far - one_over_near);
+
     vec4 a_position_transformed_for_depth_buffer = vec4(
         a_position_rotated_2.x,
         a_position_rotated_2.y,
         // Just kinda guessing at these numbers, trying to fit the z values into 0.0 to 1.0 so the depth values are within those bounds as well
-        (1.5f - a_position_rotated_2.z) * 0.3,
+        // (a_position_rotated_2.z + 0.5) * 0.3,
+        depth,
         1.0f
     );
     gl_Position = a_position_transformed_for_depth_buffer;

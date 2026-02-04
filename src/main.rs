@@ -428,16 +428,19 @@ pub fn main() {
     // Set up depth stencil
     let depth_stencil_target_info = DepthStencilTargetInfo::new()
         .with_texture(&mut depth_stencil_texture)
-        .with_clear_depth(1.0)
+        // .with_clear_depth(1.0)
+        .with_clear_depth(0.0)
         .with_load_op(LoadOp::CLEAR)
         .with_store_op(StoreOp::STORE)
         .with_stencil_load_op(LoadOp::CLEAR)
         .with_stencil_store_op(StoreOp::STORE)
         .with_cycle(true)
-        .with_clear_stencil(0);
+        // .with_clear_stencil(0);
+        .with_clear_stencil(1);
 
     let depth_stencil_state = DepthStencilState::new()
-        .with_compare_op(CompareOp::LessOrEqual)
+        // .with_compare_op(CompareOp::LessOrEqual)
+        .with_compare_op(CompareOp::Greater)
         // .with_back_stencil_state(value)
         // .with_front_stencil_state(value)
         // .with_compare_mask(value)
