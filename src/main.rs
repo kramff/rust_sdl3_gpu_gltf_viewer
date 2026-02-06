@@ -68,16 +68,51 @@ struct PrimitiveBufferStruct {
 
 fn load_model() -> Model {
     // Open model file
+    println!("Loading model file...");
     let (model_gltf, buffers, images) = gltf::import("models/Low-Poly-Base_copy.glb").unwrap();
     // let (model_gltf, buffers, images) = gltf::import("models/Avocado.glb").unwrap();
+    // let (model_gltf, buffers, images) = gltf::import("models/MinimalTriangle.gltf").unwrap();
+    // Note - ABeautifulGame takes like 30 seconds to load
     // let (model_gltf, buffers, images) = gltf::import("models/ABeautifulGame.glb").unwrap();
     // let (model_gltf, buffers, images) =
     //     gltf::import("models/GlassHurricaneCandleHolder.glb").unwrap();
+    println!("Loaded model file.");
     for image in images.iter() {
         println!(
             "image here with format {:?} width {} height {}",
             image.format, image.width, image.height
         );
+    }
+
+    // println!("Number of scenes: {}", model_gltf.scenes().len());
+    for scene in model_gltf.scenes() {
+        // scene.nodes()
+    }
+    if let Some(default_scene) = model_gltf.default_scene() {
+        println!("Default scene's name is {:?}", default_scene.name());
+    }
+    println!("Looking at nodes...");
+    for node in model_gltf.nodes() {
+        // for primitive in node.mesh().unwrap().primitives() {}
+        // println!("node's index: {:?}", node.index());
+        // if let Some(camera) = node.camera() {
+        //     println!("node's camera: {:?}", camera);
+        // }
+        // for child in node.children() {
+        // }
+        // println!(
+        //     "node named {:?} has {} children. It's transform is {:?}.",
+        //     node.name(),
+        //     node.children().len(),
+        //     node.transform()
+        // );
+        // println!("node's children: {:?}", node.children());
+        // println!("node's extras: {:?}", node.extras());
+        // println!("node's mesh: {:?}", node.mesh());
+        // println!("node's name: {:?}", node.name());
+        // println!("node's transform: {:?}", node.transform());
+        // println!("node's skin: {:?}", node.skin());
+        // println!("node's weights: {:?}", node.weights());
     }
 
     // Vec for keeping track of which image goes with with texture, so that later the data structure for the primitive can look up the image it need via it's texture
@@ -149,7 +184,7 @@ fn load_model() -> Model {
                         a: 1.0,
                         // u: 0.5,
                         // v: 0.5,
-                        u: tex_coord_temp_vector[index].0,
+                        u: tex_coord_temp_vector[index].0, // Panics with MinimalTriangle.gltf, TODO: fix issue?
                         v: tex_coord_temp_vector[index].1,
                     });
                 }
@@ -168,7 +203,7 @@ fn load_model() -> Model {
             let texture_index = material
                 .pbr_metallic_roughness()
                 .base_color_texture()
-                .unwrap()
+                .unwrap() // ABeautifulGame.glb panics here, TODO: Set up alternate pathway when no base color texture
                 .texture()
                 .index();
 
