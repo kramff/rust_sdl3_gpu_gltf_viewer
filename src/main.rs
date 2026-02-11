@@ -3,6 +3,7 @@
 
 extern crate sdl3;
 
+use gltf::Document;
 use gltf::image::Data;
 use sdl3::event::Event;
 use sdl3::gpu::*;
@@ -69,8 +70,8 @@ struct PrimitiveBufferStruct {
 fn load_model() -> Model {
     // Open model file
     println!("Loading model file...");
-    let (model_gltf, buffers, images) = gltf::import("models/Low-Poly-Base_copy.glb").unwrap();
-    // let (model_gltf, buffers, images) = gltf::import("models/Avocado.glb").unwrap();
+    // let (model_gltf, buffers, images) = gltf::import("models/Low-Poly-Base_copy.glb").unwrap();
+    let (model_gltf, buffers, images) = gltf::import("models/Avocado.glb").unwrap();
     // let (model_gltf, buffers, images) = gltf::import("models/MinimalTriangle.gltf").unwrap();
     // Note - ABeautifulGame takes like 30 seconds to load
     // let (model_gltf, buffers, images) = gltf::import("models/ABeautifulGame.glb").unwrap();
@@ -158,14 +159,12 @@ fn load_model() -> Model {
             // Create reader
             let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
+            // Get texture coordinates
             let mut tex_coord_temp_vector = Vec::new();
-            // TODO - figure out what the "set" argument for read_tex_coords(set) is for
             if let Some(iter) = reader.read_tex_coords(0) {
                 for tex_coord in iter.into_f32() {
-                    // tex_coord
                     let tex_coord_u = tex_coord[0];
                     let tex_coord_v = tex_coord[1];
-                    // println!("u: {}, v: {}", tex_coord_u, tex_coord_v);
                     tex_coord_temp_vector.push((tex_coord_u, tex_coord_v));
                 }
             }
@@ -302,6 +301,154 @@ fn load_model() -> Model {
     }
 }
 
+struct PrimitiveData {
+    vertex_buffer: Buffer,
+    index_buffer: Buffer,
+    index_count: u32,
+    // Material is not in here, because it will be accessed from the gltf document at render time
+}
+
+struct MeshData {
+    primitives: Vec<PrimitiveData>,
+}
+
+struct MaterialData<'a> {
+    base_color_texture: Option<Texture<'a>>,
+    base_color_sampler: Option<Sampler>,
+    metallic_roughness_texture: Option<Texture<'a>>,
+    metallic_roughness_sampler: Option<Sampler>,
+    normal_texture: Option<Texture<'a>>,
+    normal_sampler: Option<Sampler>,
+    occlusion_texture: Option<Texture<'a>>,
+    occlusion_sampler: Option<Sampler>,
+    emmisive_texture: Option<Texture<'a>>,
+    emmisive_sampler: Option<Sampler>,
+}
+
+struct ModelData<'a> {
+    meshes: Vec<MeshData>,
+    materials: Vec<MaterialData<'a>>,
+    document: Document,
+}
+
+fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> ModelData<'a> {
+    // Load the model with the gltf crate's import function
+    let (model_gltf, buffers, images) = gltf::import(model_path).unwrap();
+
+    let meshes_vec = model_gltf
+        .meshes()
+        .map(|mesh| -> MeshData {
+            // mesh.index();
+            let primitives_vec = mesh.primitives().map(|primitive| -> PrimitiveData {
+                // Create reader
+                let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+
+                // Get texture coordinates
+                let mut tex_coord_temp_vector = Vec::new();
+                if let Some(iter) = reader.read_tex_coords(0) {
+                    for tex_coord in iter.into_f32() {
+                        let tex_coord_u = tex_coord[0];
+                        let tex_coord_v = tex_coord[1];
+                        tex_coord_temp_vector.push((tex_coord_u, tex_coord_v));
+                    }
+                }
+                // reader.read_normals()
+                // reader.read_tangents()
+                // reader.read_joints(set)
+                // reader.read_weights(set)
+                // reader.read_morph_targets()
+
+                // Get vertex colors
+                let mut colors_temp_vector = Vec::new();
+                if let Some(iter) = reader.read_colors(0) {
+                    for vertex_color in iter.into_rgba_f32() {
+                        colors_temp_vector.push(vertex_color);
+                    }
+                }
+
+                // Create vertices vector, then read vertex positions and add to vector
+                let mut vertices = Vec::new();
+                if let Some(iter) = reader.read_positions() {
+                    for (index, vertex_position) in iter.enumerate() {
+                        // Use vertex color from model data  or use default value (white)
+                        let vertex_color = colors_temp_vector
+                            .get(index)
+                            .or(Some(&[1f32, 1f32, 1f32, 1f32]))
+                            .unwrap();
+                        // Use texture coordinate from model data or use default value
+                        let texture_coordinate =
+                            tex_coord_temp_vector.get(index).or(Some(&(0f32, 0f32)));
+                        vertices.push(Vertex {
+                            x: vertex_position[0],
+                            y: vertex_position[1],
+                            z: vertex_position[2],
+                            r: vertex_color[0],
+                            g: vertex_color[1],
+                            b: vertex_color[2],
+                            a: vertex_color[3],
+                            // u: 0.5,
+                            // v: 0.5,
+                            u: tex_coord_temp_vector[index].0, // Panics with MinimalTriangle.gltf, TODO: fix issue?
+                            v: tex_coord_temp_vector[index].1,
+                        });
+                    }
+                }
+
+                // Create indices vector, then read index values and put into vector
+                let mut indices = Vec::new();
+                if let Some(indices_raw) = reader.read_indices() {
+                    indices.append(&mut indices_raw.into_u32().collect::<Vec<u32>>());
+                }
+
+                // primitive.index()
+
+                // TODO: I haven't figured this out yet exactly
+                // Upload the data for the primitive
+                // Keep track of the index of the primitive - they are unique in the model, right?
+                // Later, when rendering, look up the data to use by eventually reaching the primitive of the model
+                // And use the index of a primitive as the reference back to the data uploaded to gpu
+                // ----> Not quite: Use the meshes as the thing that gets looked up by index
+                PrimitiveData {
+                    vertex_buffer: (),
+                    index_buffer: (),
+                    index_count: (),
+                }
+            });
+            MeshData {
+                primitives: primitives_vec,
+            }
+        })
+        .collect();
+
+    let materials_vec = model_gltf
+        .materials()
+        .map(|material| -> MaterialData {
+            // TODO: Upload the textures and samplers needed for this material to the GPU
+            // material.pbr_metallic_roughness().base_color_texture();
+
+            return MaterialData {
+                base_color_texture: None,
+                base_color_sampler: None,
+                metallic_roughness_texture: None,
+                metallic_roughness_sampler: None,
+                normal_texture: None,
+                normal_sampler: None,
+                occlusion_texture: None,
+                occlusion_sampler: None,
+                emmisive_texture: None,
+                emmisive_sampler: None,
+            };
+        })
+        .collect();
+
+    // Return a struct with the primitives, materials, and original gltf document
+    ModelData {
+        meshes: meshes_vec,
+        materials: materials_vec,
+        document: model_gltf,
+    }
+}
+
 pub fn main() {
     let mut model_vec: Vec<Model> = Vec::new();
 
@@ -332,6 +479,8 @@ pub fn main() {
         .unwrap()
         .with_window(&window)
         .unwrap();
+
+    // load_model_and_copy_to_gpu("models/Low-Poly-Base_copy.glb", &gpu_device);
 
     // TODO - working on texture. Still in the "what is going on" phase
     // Not sure which format, need to get from gltf data (I think?)
@@ -923,7 +1072,7 @@ pub fn main() {
         render_pass.bind_graphics_pipeline(&pipeline);
 
         // Loop through all vertex buffers
-        for (index, primitive_buffer_struct) in primitive_buffer_struct_vec.iter().enumerate() {
+        for (_index, primitive_buffer_struct) in primitive_buffer_struct_vec.iter().enumerate() {
             // Setup the buffer bindings for vertices
             let buffer_bindings_vertex = BufferBinding::new()
                 .with_buffer(&primitive_buffer_struct.vertex_buffer)
