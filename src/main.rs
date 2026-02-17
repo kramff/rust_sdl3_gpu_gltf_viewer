@@ -4,7 +4,6 @@
 extern crate sdl3;
 
 use gltf::Document;
-use gltf::image::Data;
 use sdl3::event::Event;
 use sdl3::gpu::*;
 use sdl3::keyboard::Keycode;
@@ -31,303 +30,29 @@ struct Vertex {
     v: c_float,
 }
 
-// Uniform value to pass to shader
-// struct UniformBufferTime {
-//     time: c_float,
-// }
 struct UniformBufferPosition {
     x_pos: c_float,
     y_pos: c_float,
-}
-
-#[derive(Debug)]
-struct Primitive {
-    vertices: Vec<Vertex>,
-    indices: Vec<u32>,
-    image_index: usize,
-}
-
-#[derive(Debug)]
-struct Mesh {
-    primitive_vec: Vec<Primitive>,
-}
-
-#[derive(Debug)]
-struct Model {
-    mesh_vec: Vec<Mesh>,
-    images_vec: Vec<Data>,
-}
-
-struct PrimitiveBufferStruct {
-    vertex_buffer: Buffer,
-    #[allow(dead_code)] // Not used yet - may be unnecessary to keep track of this?
-    vertex_count: u32,
-    index_buffer: Buffer,
-    index_count: u32,
-    image_index: usize,
-}
-
-fn load_model() -> Model {
-    // Open model file
-    println!("Loading model file...");
-    // let (model_gltf, buffers, images) = gltf::import("models/Low-Poly-Base_copy.glb").unwrap();
-    let (model_gltf, buffers, images) = gltf::import("models/Avocado.glb").unwrap();
-    // let (model_gltf, buffers, images) = gltf::import("models/MinimalTriangle.gltf").unwrap();
-    // Note - ABeautifulGame takes like 30 seconds to load
-    // let (model_gltf, buffers, images) = gltf::import("models/ABeautifulGame.glb").unwrap();
-    // let (model_gltf, buffers, images) =
-    //     gltf::import("models/GlassHurricaneCandleHolder.glb").unwrap();
-    println!("Loaded model file.");
-    for image in images.iter() {
-        println!(
-            "image here with format {:?} width {} height {}",
-            image.format, image.width, image.height
-        );
-    }
-
-    // println!("Number of scenes: {}", model_gltf.scenes().len());
-    for scene in model_gltf.scenes() {
-        // scene.nodes()
-    }
-    if let Some(default_scene) = model_gltf.default_scene() {
-        println!("Default scene's name is {:?}", default_scene.name());
-    }
-    println!("Looking at nodes...");
-    for node in model_gltf.nodes() {
-        // for primitive in node.mesh().unwrap().primitives() {}
-        // println!("node's index: {:?}", node.index());
-        // if let Some(camera) = node.camera() {
-        //     println!("node's camera: {:?}", camera);
-        // }
-        // for child in node.children() {
-        // }
-        // println!(
-        //     "node named {:?} has {} children. It's transform is {:?}.",
-        //     node.name(),
-        //     node.children().len(),
-        //     node.transform()
-        // );
-        // println!("node's children: {:?}", node.children());
-        // println!("node's extras: {:?}", node.extras());
-        // println!("node's mesh: {:?}", node.mesh());
-        // println!("node's name: {:?}", node.name());
-        // println!("node's transform: {:?}", node.transform());
-        // println!("node's skin: {:?}", node.skin());
-        // println!("node's weights: {:?}", node.weights());
-    }
-
-    // Vec for keeping track of which image goes with with texture, so that later the data structure for the primitive can look up the image it need via it's texture
-    let mut texture_source_index_vec = Vec::new();
-
-    let textures = model_gltf.textures();
-    for texture in textures.clone() {
-        // Texture indicies go from 0 to 6 with no doubles
-        println!("Texture - index is: {:?}", texture.index());
-        let tex_source = texture.source();
-        // Texture source indices go from 0 to 5 with a doubled 1
-        println!("Texture source index is {}", tex_source.index());
-        texture_source_index_vec.push(tex_source.index());
-        // TODO - I think this is important, there are more textures than images. I think the texture sources are actually matching up with the images but not sure yet
-        // TODO - figure out what material, texture, image actually mean:
-        // https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html
-
-        // texture.sampler();
-        // let texture_sampler = texture.sampler();
-        // dbg!(texture_sampler.mag_filter());
-        // let texture_source = texture.source();
-        // dbg!(texture_source);
-    }
-    // let texture = textures
-    //     .clone()
-    //     .find(|texture| -> bool { texture.index() == 0 });
-
-    /* for image in images {
-        println!("image - {:?}", image.name);
-    } */
-
-    let mut mesh_vec: Vec<Mesh> = Vec::new();
-
-    // TODO - animations!
-    // for animation in model_gltf.animations() {}
-
-    // Loop through meshes in the model
-    for mesh in model_gltf.meshes() {
-        let mut primitive_vec: Vec<Primitive> = Vec::new();
-
-        // Loop through primitives in each mesh
-        for primitive in mesh.primitives() {
-            // Create reader
-            let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
-
-            // Get texture coordinates
-            let mut tex_coord_temp_vector = Vec::new();
-            if let Some(iter) = reader.read_tex_coords(0) {
-                for tex_coord in iter.into_f32() {
-                    let tex_coord_u = tex_coord[0];
-                    let tex_coord_v = tex_coord[1];
-                    tex_coord_temp_vector.push((tex_coord_u, tex_coord_v));
-                }
-            }
-
-            // Create vertices vector, then read vertex positions and add to vector
-            let mut vertices = Vec::new();
-            if let Some(iter) = reader.read_positions() {
-                for (index, vertex_position) in iter.enumerate() {
-                    vertices.push(Vertex {
-                        x: vertex_position[0],
-                        y: vertex_position[1],
-                        z: vertex_position[2],
-                        r: 1.0,
-                        g: 1.0,
-                        b: 1.0,
-                        a: 1.0,
-                        // u: 0.5,
-                        // v: 0.5,
-                        u: tex_coord_temp_vector[index].0, // Panics with MinimalTriangle.gltf, TODO: fix issue?
-                        v: tex_coord_temp_vector[index].1,
-                    });
-                }
-            }
-
-            // Create indices vector, then read index values and put into vector
-            let mut indices = Vec::new();
-            if let Some(indices_raw) = reader.read_indices() {
-                indices.append(&mut indices_raw.into_u32().collect::<Vec<u32>>());
-            }
-
-            let material = primitive.material();
-            // println!("material index is: {}", material.index().unwrap());
-
-            // material -> pbr metallic roughness -> base color texture -> option -> info -> texture -> index
-            let texture_index = material
-                .pbr_metallic_roughness()
-                .base_color_texture()
-                .unwrap() // ABeautifulGame.glb panics here, TODO: Set up alternate pathway when no base color texture
-                .texture()
-                .index();
-
-            println!("texture_index of this material is {} ", texture_index);
-
-            let image_index_for_this_primitive = texture_source_index_vec[texture_index];
-
-            // TODO - Working on trying to get the texture source along with the primitive so the primitives don't need to be hardcoded to which texture to use
-            // Looking at here to try and figure this out https://github.com/whoisryosuke/wgpu-hello-world/blob/play/gltf-r2/src/resources.rs
-            // let texture_source = material
-            //     .pbr_metallic_roughness()
-            //     .base_color_texture()
-            //     .map(|tex| tex.texture().source().source())
-            //     .expect("texture issue");
-
-            // println!("material - index is: {:?}", material.index());
-            let texture = textures
-                .clone()
-                .find(|texture| -> bool { texture.index() == material.index().unwrap() })
-                .unwrap();
-
-            let image = texture.source();
-            let image_source = image.source();
-            // image_view should be the "view" of the buffer of the image data, I think...
-            let image_view = match image_source {
-                gltf::image::Source::View { view, mime_type: _ } => {
-                    // println!("is view, {}", mime_type);
-                    // println!("view index {}", view.index());
-                    Some(view)
-                }
-                gltf::image::Source::Uri {
-                    uri: _,
-                    mime_type: _,
-                } => {
-                    // println!("is uri, {}", mime_type.unwrap());
-                    None
-                }
-            }
-            .unwrap();
-            // The unwrap() is assuming it's a image view and not a uri
-            println!(
-                "image_view has index {}, length {}, offset {}, stride {}, name {}, extras {}",
-                // image_view.index() seems to be way too high (7, 15, 15, 31, 39, 47, 55)
-                image_view.index(),
-                image_view.length(),
-                image_view.offset(),
-                image_view.stride().unwrap_or(0),
-                image_view.name().unwrap_or("(no name)"),
-                image_view.extras().to_string()
-            );
-            // image_view.buffer().index() seems to be always 0
-            // println!("image view buffer index is {}", image_view.buffer().index());
-
-            // Get the buffer of that view (not sure? Might actually just want the view)
-            // let _image_buffer = image_view.buffer();
-            // println!(
-            //     "this image_buffer has index {}, length {}, name {}, extras {}",
-            //     image_buffer.index(),
-            //     image_buffer.length(),
-            //     image_buffer.name().unwrap_or("(no name)"),
-            //     image_buffer.extras().to_string()
-            // );
-
-            // println!("{:?}", image_source);
-
-            /* reader.read_normals();
-            reader.read_tangents();
-            reader.read_colors(0);
-            reader.read_joints(0);
-            reader.read_tex_coords(0);
-            reader.read_weights(0);
-            reader.read_morph_targets(); */
-
-            // Print info (can be removed at some point)
-            // println!(
-            //     "Primitive added with {} vertices and {} indices. Size of the indices array in bytes is {}",
-            //     vertices.len(),
-            //     indices.len(),
-            //     indices.len() * size_of::<u32>()
-            // );
-
-            // Make a primitive struct instance
-            primitive_vec.push(Primitive {
-                vertices: vertices,
-                indices: indices,
-                image_index: image_index_for_this_primitive,
-            });
-        }
-        mesh_vec.push(Mesh {
-            primitive_vec: primitive_vec,
-        })
-    }
-    Model {
-        mesh_vec: mesh_vec,
-        images_vec: images,
-    }
 }
 
 struct PrimitiveData {
     vertex_buffer: Buffer,
     index_buffer: Buffer,
     index_count: u32,
-    // Material is not in here, because it will be accessed from the gltf document at render time
 }
 
 struct MeshData {
     primitives: Vec<PrimitiveData>,
 }
 
-struct MaterialData<'a> {
-    base_color_texture: Option<Texture<'a>>,
-    base_color_sampler: Option<Sampler>,
-    metallic_roughness_texture: Option<Texture<'a>>,
-    metallic_roughness_sampler: Option<Sampler>,
-    normal_texture: Option<Texture<'a>>,
-    normal_sampler: Option<Sampler>,
-    occlusion_texture: Option<Texture<'a>>,
-    occlusion_sampler: Option<Sampler>,
-    emmisive_texture: Option<Texture<'a>>,
-    emmisive_sampler: Option<Sampler>,
+struct ImageData<'a> {
+    texture: Texture<'a>,
+    sampler: Sampler,
 }
 
 struct ModelData<'a> {
     meshes: Vec<MeshData>,
-    materials: Vec<MaterialData<'a>>,
+    images: Vec<ImageData<'a>>,
     document: Document,
 }
 
@@ -335,131 +60,283 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
     // Load the model with the gltf crate's import function
     let (model_gltf, buffers, images) = gltf::import(model_path).unwrap();
 
+    // Start a copy pass
+    let copy_command_buffer = gpu_device.acquire_command_buffer().unwrap();
+    let copy_pass = gpu_device.begin_copy_pass(&copy_command_buffer).unwrap();
+
     let meshes_vec = model_gltf
         .meshes()
         .map(|mesh| -> MeshData {
-            // mesh.index();
-            let primitives_vec = mesh.primitives().map(|primitive| -> PrimitiveData {
-                // Create reader
-                let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+            let primitives_vec = mesh
+                .primitives()
+                .map(|primitive| -> PrimitiveData {
+                    // Create reader
+                    let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
-                // Get texture coordinates
-                let mut tex_coord_temp_vector = Vec::new();
-                if let Some(iter) = reader.read_tex_coords(0) {
-                    for tex_coord in iter.into_f32() {
-                        let tex_coord_u = tex_coord[0];
-                        let tex_coord_v = tex_coord[1];
-                        tex_coord_temp_vector.push((tex_coord_u, tex_coord_v));
+                    // Get texture coordinates
+                    let mut tex_coord_temp_vector = Vec::new();
+                    if let Some(iter) = reader.read_tex_coords(0) {
+                        for tex_coord in iter.into_f32() {
+                            let tex_coord_u = tex_coord[0];
+                            let tex_coord_v = tex_coord[1];
+                            tex_coord_temp_vector.push((tex_coord_u, tex_coord_v));
+                        }
                     }
-                }
-                // reader.read_normals()
-                // reader.read_tangents()
-                // reader.read_joints(set)
-                // reader.read_weights(set)
-                // reader.read_morph_targets()
+                    // reader.read_normals()
+                    // reader.read_tangents()
+                    // reader.read_joints(set)
+                    // reader.read_weights(set)
+                    // reader.read_morph_targets()
 
-                // Get vertex colors
-                let mut colors_temp_vector = Vec::new();
-                if let Some(iter) = reader.read_colors(0) {
-                    for vertex_color in iter.into_rgba_f32() {
-                        colors_temp_vector.push(vertex_color);
+                    // Get vertex colors
+                    let mut colors_temp_vector = Vec::new();
+                    if let Some(iter) = reader.read_colors(0) {
+                        for vertex_color in iter.into_rgba_f32() {
+                            colors_temp_vector.push(vertex_color);
+                        }
                     }
-                }
 
-                // Create vertices vector, then read vertex positions and add to vector
-                let mut vertices = Vec::new();
-                if let Some(iter) = reader.read_positions() {
-                    for (index, vertex_position) in iter.enumerate() {
-                        // Use vertex color from model data  or use default value (white)
-                        let vertex_color = colors_temp_vector
-                            .get(index)
-                            .or(Some(&[1f32, 1f32, 1f32, 1f32]))
-                            .unwrap();
-                        // Use texture coordinate from model data or use default value
-                        let texture_coordinate =
-                            tex_coord_temp_vector.get(index).or(Some(&(0f32, 0f32)));
-                        vertices.push(Vertex {
-                            x: vertex_position[0],
-                            y: vertex_position[1],
-                            z: vertex_position[2],
-                            r: vertex_color[0],
-                            g: vertex_color[1],
-                            b: vertex_color[2],
-                            a: vertex_color[3],
-                            // u: 0.5,
-                            // v: 0.5,
-                            u: tex_coord_temp_vector[index].0, // Panics with MinimalTriangle.gltf, TODO: fix issue?
-                            v: tex_coord_temp_vector[index].1,
-                        });
+                    // Create vertices vector, then read vertex positions and add to vector
+                    let mut vertices = Vec::new();
+                    if let Some(iter) = reader.read_positions() {
+                        for (index, vertex_position) in iter.enumerate() {
+                            // Use vertex color from model data  or use default value (white)
+                            let vertex_color = colors_temp_vector
+                                .get(index)
+                                .or(Some(&[1f32, 1f32, 1f32, 1f32]))
+                                .unwrap();
+                            // Use texture coordinate from model data or use default value (0, 0)
+                            let texture_coordinate = tex_coord_temp_vector
+                                .get(index)
+                                .or(Some(&(0f32, 0f32)))
+                                .unwrap();
+                            vertices.push(Vertex {
+                                x: vertex_position[0],
+                                y: vertex_position[1],
+                                z: vertex_position[2],
+                                r: vertex_color[0],
+                                g: vertex_color[1],
+                                b: vertex_color[2],
+                                a: vertex_color[3],
+                                u: texture_coordinate.0,
+                                v: texture_coordinate.1,
+                            });
+                        }
                     }
-                }
 
-                // Create indices vector, then read index values and put into vector
-                let mut indices = Vec::new();
-                if let Some(indices_raw) = reader.read_indices() {
-                    indices.append(&mut indices_raw.into_u32().collect::<Vec<u32>>());
-                }
+                    // Create indices vector, then read index values and put into vector
+                    let mut indices = Vec::new();
+                    if let Some(indices_raw) = reader.read_indices() {
+                        indices.append(&mut indices_raw.into_u32().collect::<Vec<u32>>());
+                    }
 
-                // primitive.index()
+                    // How big is the vertex data to transfer
+                    let primitive_vertices_size = (vertices.len() * size_of::<Vertex>()) as u32;
 
-                // TODO: I haven't figured this out yet exactly
-                // Upload the data for the primitive
-                // Keep track of the index of the primitive - they are unique in the model, right?
-                // Later, when rendering, look up the data to use by eventually reaching the primitive of the model
-                // And use the index of a primitive as the reference back to the data uploaded to gpu
-                // ----> Not quite: Use the meshes as the thing that gets looked up by index
-                PrimitiveData {
-                    vertex_buffer: (),
-                    index_buffer: (),
-                    index_count: (),
-                }
-            });
+                    // How big is the index data to transfer
+                    let primitive_indices_size = (indices.len() * size_of::<u32>()) as u32;
+
+                    // Determine which is larger
+                    let larger_size = primitive_vertices_size.max(primitive_indices_size);
+
+                    // Create the transfer buffer, the vertices and the indices will both use this to upload to the gpu
+                    let transfer_buffer = gpu_device
+                        .create_transfer_buffer()
+                        .with_size(larger_size)
+                        .with_usage(TransferBufferUsage::UPLOAD)
+                        .build()
+                        .unwrap();
+
+                    // Create the vertex buffer
+                    let vertex_buffer = gpu_device
+                        .create_buffer()
+                        .with_size(primitive_vertices_size)
+                        .with_usage(BufferUsageFlags::VERTEX)
+                        .build()
+                        .unwrap();
+
+                    // Fill the transfer buffer
+                    let mut buffer_mem_map = transfer_buffer.map(&gpu_device, true);
+                    let buffer_mem_map_mem_mut: &mut [Vertex] = buffer_mem_map.mem_mut();
+
+                    for (index, &value) in vertices.iter().enumerate() {
+                        buffer_mem_map_mem_mut[index] = value;
+                    }
+                    buffer_mem_map.unmap();
+
+                    // Where is the data
+                    let data_location = TransferBufferLocation::default()
+                        .with_transfer_buffer(&transfer_buffer)
+                        .with_offset(0u32);
+
+                    // Where to upload the data
+                    let buffer_region = BufferRegion::default()
+                        .with_buffer(&vertex_buffer)
+                        .with_size(primitive_vertices_size)
+                        .with_offset(0u32);
+
+                    // Upload the data
+                    copy_pass.upload_to_gpu_buffer(data_location, buffer_region, true);
+
+                    // Index stuff
+
+                    // Create the index buffer
+                    let index_buffer = gpu_device
+                        .create_buffer()
+                        .with_size(primitive_indices_size)
+                        .with_usage(BufferUsageFlags::INDEX)
+                        .build()
+                        .unwrap();
+
+                    // Fill the transfer buffer
+                    let mut buffer_mem_map = transfer_buffer.map(&gpu_device, true);
+
+                    let buffer_mem_map_mem_mut: &mut [u32] = buffer_mem_map.mem_mut();
+
+                    for (index, &value) in indices.iter().enumerate() {
+                        buffer_mem_map_mem_mut[index] = value;
+                    }
+
+                    buffer_mem_map.unmap();
+
+                    // Where is the data
+                    let data_location = TransferBufferLocation::default()
+                        .with_transfer_buffer(&transfer_buffer)
+                        .with_offset(0u32);
+
+                    // Where to upload the data
+                    let buffer_region = BufferRegion::default()
+                        .with_buffer(&index_buffer)
+                        .with_size(primitive_indices_size)
+                        .with_offset(0u32);
+
+                    // Upload the data
+                    // The next line causes the model to not show up...
+                    copy_pass.upload_to_gpu_buffer(data_location, buffer_region, true);
+
+                    // Release the index transfer buffer
+                    drop(transfer_buffer);
+
+                    PrimitiveData {
+                        vertex_buffer: vertex_buffer,
+                        index_buffer: index_buffer,
+                        index_count: indices.len() as u32,
+                    }
+                })
+                .collect();
             MeshData {
                 primitives: primitives_vec,
             }
         })
         .collect();
 
-    let materials_vec = model_gltf
-        .materials()
-        .map(|material| -> MaterialData {
-            // TODO: Upload the textures and samplers needed for this material to the GPU
-            // material.pbr_metallic_roughness().base_color_texture();
-
-            return MaterialData {
-                base_color_texture: None,
-                base_color_sampler: None,
-                metallic_roughness_texture: None,
-                metallic_roughness_sampler: None,
-                normal_texture: None,
-                normal_sampler: None,
-                occlusion_texture: None,
-                occlusion_sampler: None,
-                emmisive_texture: None,
-                emmisive_sampler: None,
+    // Upload images
+    let images_vec = images
+        .iter()
+        .map(|image| -> ImageData {
+            let format_mode = match image.format {
+                gltf::image::Format::R8 => TextureFormat::R8Unorm,
+                gltf::image::Format::R8G8 => TextureFormat::R8g8Unorm,
+                gltf::image::Format::R8G8B8 => TextureFormat::R8g8b8a8Unorm, // Not a perfect match
+                gltf::image::Format::R8G8B8A8 => TextureFormat::R8g8b8a8Unorm,
+                gltf::image::Format::R16 => TextureFormat::R16Unorm,
+                gltf::image::Format::R16G16 => TextureFormat::R16g16Unorm,
+                gltf::image::Format::R16G16B16 => TextureFormat::R16g16b16a16Unorm, // Not a perfect match
+                gltf::image::Format::R16G16B16A16 => TextureFormat::R16g16b16a16Unorm, // Not a perfect match
+                gltf::image::Format::R32G32B32FLOAT => TextureFormat::R32g32b32a32Float, // Not a perfect match
+                gltf::image::Format::R32G32B32A32FLOAT => TextureFormat::R32g32b32a32Float,
             };
+            let texture_create_info = TextureCreateInfo::new()
+                .with_type(TextureType::_2D)
+                .with_format(format_mode)
+                .with_usage(TextureUsage::SAMPLER)
+                .with_width(image.width)
+                .with_height(image.height)
+                .with_layer_count_or_depth(1)
+                .with_num_levels(1);
+            let texture = gpu_device.create_texture(texture_create_info).unwrap();
+
+            let sampler_create_info = SamplerCreateInfo::new()
+                // TODO - get sampler info from gltf model
+                // Not sure how best to do that when starting with the images...
+                .with_min_filter(Filter::Nearest)
+                .with_mag_filter(Filter::Nearest)
+                .with_mipmap_mode(SamplerMipmapMode::Nearest)
+                .with_address_mode_u(SamplerAddressMode::Repeat)
+                .with_address_mode_v(SamplerAddressMode::Repeat)
+                .with_address_mode_w(SamplerAddressMode::Repeat);
+            // .with_mip_lod_bias(value)
+            // .with_max_anisotropy(value)
+            // .with_compare_op(value)
+            // .with_min_lod(value)
+            // .with_max_lod(value)
+            // .with_enable_anisotropy(enable)
+            // .with_enable_compare(enable);
+            let sampler = gpu_device.create_sampler(sampler_create_info).unwrap();
+
+            let texture_transfer_buffer = gpu_device
+                .create_transfer_buffer()
+                .with_size(image.width * image.height * (size_of::<c_float>() as u32) * 4)
+                .with_usage(TransferBufferUsage::UPLOAD)
+                .build()
+                .unwrap();
+            let texture_transfer_info = TextureTransferInfo::new()
+                .with_transfer_buffer(&texture_transfer_buffer)
+                .with_offset(0)
+                .with_pixels_per_row(image.width)
+                .with_rows_per_layer(image.height);
+            let texture_region = TextureRegion::new()
+                .with_texture(&texture)
+                .with_width(image.width)
+                .with_height(image.height)
+                .with_depth(1);
+
+            let mut texture_buffer_mem_map = texture_transfer_buffer.map(&gpu_device, true);
+            let texture_buffer_mem_map_mem_mut: &mut [_] = texture_buffer_mem_map.mem_mut();
+            for pixel_coord in 0..(image.width * image.height) as usize {
+                match image.format {
+                    gltf::image::Format::R8G8B8 => {
+                        texture_buffer_mem_map_mem_mut[pixel_coord] = [
+                            image.pixels[pixel_coord * 3],
+                            image.pixels[pixel_coord * 3 + 1],
+                            image.pixels[pixel_coord * 3 + 2],
+                            u8::MAX,
+                        ];
+                    }
+                    gltf::image::Format::R8G8B8A8 => {
+                        texture_buffer_mem_map_mem_mut[pixel_coord] = [
+                            image.pixels[pixel_coord * 4],
+                            image.pixels[pixel_coord * 4 + 1],
+                            image.pixels[pixel_coord * 4 + 2],
+                            image.pixels[pixel_coord * 4 + 3],
+                        ];
+                    }
+                    _ => panic!("Image format not supported yet: {:?}", image.format),
+                }
+            }
+            texture_buffer_mem_map.unmap();
+            copy_pass.upload_to_gpu_texture(texture_transfer_info, texture_region, true);
+
+            ImageData {
+                texture: texture,
+                sampler: sampler,
+            }
         })
         .collect();
+
+    // End the copy pass
+    gpu_device.end_copy_pass(copy_pass);
+    copy_command_buffer.submit().unwrap();
 
     // Return a struct with the primitives, materials, and original gltf document
     ModelData {
         meshes: meshes_vec,
-        materials: materials_vec,
+        images: images_vec,
         document: model_gltf,
     }
 }
 
 pub fn main() {
-    let mut model_vec: Vec<Model> = Vec::new();
-
-    model_vec.push(load_model());
-
-    let number_of_samplers: u32 = model_vec
-        .iter()
-        .map(|model| -> u32 { model.images_vec.len() as u32 })
-        .sum();
-    println!("there are going to be {} samplers", number_of_samplers);
-
     // Initialize SDL3
     let sdl_context = sdl3::init().unwrap();
 
@@ -479,39 +356,6 @@ pub fn main() {
         .unwrap()
         .with_window(&window)
         .unwrap();
-
-    // load_model_and_copy_to_gpu("models/Low-Poly-Base_copy.glb", &gpu_device);
-
-    // TODO - working on texture. Still in the "what is going on" phase
-    // Not sure which format, need to get from gltf data (I think?)
-    // Also the other info of course
-    // let my_texture_create_info = TextureCreateInfo::new()
-    //     .with_type(TextureType::_2D)
-    //     .with_format(TextureFormat::R8g8b8a8Unorm)
-    //     // TODO - is this one supposed to be R8g8b8a8UnormSrgb ???
-    //     .with_usage(TextureUsage::SAMPLER)
-    //     .with_width(64)
-    //     .with_height(64)
-    //     .with_layer_count_or_depth(1)
-    //     .with_num_levels(1);
-    // let my_texture = gpu_device.create_texture(my_texture_create_info).unwrap();
-
-    // TODO - sampler?
-    // let my_sampler_create_info = SamplerCreateInfo::new()
-    //     .with_min_filter(Filter::Nearest)
-    //     .with_mag_filter(Filter::Nearest)
-    //     .with_mipmap_mode(SamplerMipmapMode::Nearest)
-    //     .with_address_mode_u(SamplerAddressMode::Repeat)
-    //     .with_address_mode_v(SamplerAddressMode::Repeat)
-    //     .with_address_mode_w(SamplerAddressMode::Repeat);
-    // // .with_mip_lod_bias(value)
-    // // .with_max_anisotropy(value)
-    // // .with_compare_op(value)
-    // // .with_min_lod(value)
-    // // .with_max_lod(value)
-    // // .with_enable_anisotropy(enable)
-    // // .with_enable_compare(enable);
-    // let my_sampler = gpu_device.create_sampler(my_sampler_create_info).unwrap();
 
     // Load the vertex shader code
     let vertex_shader_code = include_bytes!("../shaders/vertex.spv");
@@ -547,9 +391,7 @@ pub fn main() {
         )
         .with_entrypoint(c"main")
         .with_samplers(1)
-        // .with_samplers(number_of_samplers)
         .with_storage_buffers(0)
-        // .with_uniform_buffers(1)
         .with_uniform_buffers(0)
         .build()
         .unwrap();
@@ -575,7 +417,7 @@ pub fn main() {
         .with_buffer_slot(0)
         .with_location(1)
         .with_format(sdl3::gpu::VertexElementFormat::Float4)
-        .with_offset(size_of::<f32>() as u32 * 3); //offset 3 f32's over to pick rgba out of xyzrgba vertex
+        .with_offset(size_of::<f32>() as u32 * 3); //offset 3 f32's over to pick (xyz)
 
     // Vertex attribute for texture coordinate. a_tex_coord (for the vertex input state, which is for the pipeline)
     let vertex_attribute3 = VertexAttribute::new()
@@ -583,7 +425,7 @@ pub fn main() {
         .with_location(2)
         .with_format(sdl3::gpu::VertexElementFormat::Float2)
         // .with_offset(0)
-        .with_offset(size_of::<f32>() as u32 * 7); // offset 7 f32's over? (Not sure, but guessing it needs to be after xyzrgba?)
+        .with_offset(size_of::<f32>() as u32 * 7); // offset 7 f32's over (xyz, rgba)
 
     // Vertex input state (for the pipeline)
     let vertex_input_state = sdl3::gpu::VertexInputState::new()
@@ -656,273 +498,15 @@ pub fn main() {
     drop(vertex_shader);
     drop(fragment_shader);
 
-    // Keep a reference to the vertex buffers
-    let mut primitive_buffer_struct_vec: Vec<PrimitiveBufferStruct> = Vec::new();
-
-    //
-    let mut samplers_vec: Vec<Sampler> = Vec::new();
-
-    //
-    let mut textures_vec: Vec<Texture> = Vec::new();
-
-    // Start a copy pass
-    let copy_command_buffer = gpu_device.acquire_command_buffer().unwrap();
-    let copy_pass = gpu_device.begin_copy_pass(&copy_command_buffer).unwrap();
-
-    // Transfer the texture data
-    // let texture_transfer_buffer = gpu_device
-    //     .create_transfer_buffer()
-    //     .with_size((64 * 64 * size_of::<c_float>() * 4) as u32) // guessing at the size of the texture data right now
-    //     .with_usage(TransferBufferUsage::UPLOAD)
-    //     .build()
-    //     .unwrap();
-    // let texture_transfer_info = TextureTransferInfo::new()
-    //     .with_transfer_buffer(&texture_transfer_buffer)
-    //     .with_offset(0)
-    //     .with_pixels_per_row(64)
-    //     .with_rows_per_layer(64);
-    // let texture_region = TextureRegion::new()
-    //     .with_texture(&my_texture)
-    //     .with_width(64)
-    //     .with_height(64)
-    //     .with_depth(1);
-    // .with_mip_level(mip_level)
-    // .with_layer(0)
-    // .with_x(0)
-    // .with_y(0)
-    // .with_z(0)
-
-    // let mut texture_color_rotate: u8 = 0;
-
-    // TODO - Need to fill the transfer buffer first
-    // (See below for how it was done with vertex and index data. Probably similar-ish)
-    // let mut texture_buffer_mem_map = texture_transfer_buffer.map(&gpu_device, true);
-    // let texture_buffer_mem_map_mem_mut: &mut [_] = texture_buffer_mem_map.mem_mut();
-    // for pixel_coord in 0..(64 * 64) {
-    // Using a fixed color for every pixel, should instead be from the gltf texture image
-    // if texture_color_rotate == 0 {
-    //     texture_buffer_mem_map_mem_mut[pixel_coord] = [255u8, 0u8, 0u8, 255u8];
-    // }
-    // if texture_color_rotate == 1 {
-    //     texture_buffer_mem_map_mem_mut[pixel_coord] = [0u8, 255u8, 0u8, 255u8];
-    // }
-    // if texture_color_rotate == 2 {
-    //     texture_buffer_mem_map_mem_mut[pixel_coord] = [0u8, 0u8, 255u8, 255u8];
-    // }
-    // if texture_color_rotate == 3 {
-    //     texture_buffer_mem_map_mem_mut[pixel_coord] = [255u8, 255u8, 0u8, 255u8];
-    // }
-    // if texture_color_rotate == 4 {
-    //     texture_buffer_mem_map_mem_mut[pixel_coord] = [255u8, 0u8, 255u8, 255u8];
-    // }
-    // if texture_color_rotate == 5 {
-    //     texture_buffer_mem_map_mem_mut[pixel_coord] = [0u8, 255u8, 255u8, 255u8];
-    // }
-    // if texture_color_rotate == 6 {
-    //     texture_buffer_mem_map_mem_mut[pixel_coord] = [180u8, 50u8, 90u8, 255u8];
-    // }
-    // texture_color_rotate += 1;
-    // if texture_color_rotate == 7 {
-    //     texture_color_rotate = 0;
-    // }
-    // }
-    // texture_buffer_mem_map.unmap();
-
-    // Upload the data
-    // copy_pass.upload_to_gpu_texture(texture_transfer_info, texture_region, true);
-
-    // Iterate through primitives in meshes in models
-    for model in model_vec {
-        for mesh in model.mesh_vec {
-            for primitive in mesh.primitive_vec {
-                // Vertex stuff
-
-                // How big is the vertex data to transfer
-                let primitive_vertices_size =
-                    (primitive.vertices.len() * size_of::<Vertex>()) as u32;
-
-                // How big is the index data to transfer
-                let primitive_indices_size = (primitive.indices.len() * size_of::<u32>()) as u32;
-
-                // Determine which is larger
-                let larger_size = primitive_vertices_size.max(primitive_indices_size);
-
-                // Create the transfer buffer, the vertices and the indices will both use this to upload to the gpu
-                let transfer_buffer = gpu_device
-                    .create_transfer_buffer()
-                    .with_size(larger_size)
-                    .with_usage(TransferBufferUsage::UPLOAD)
-                    .build()
-                    .unwrap();
-
-                // Create the vertex buffer
-                let vertex_buffer = gpu_device
-                    .create_buffer()
-                    .with_size(primitive_vertices_size)
-                    .with_usage(BufferUsageFlags::VERTEX)
-                    .build()
-                    .unwrap();
-
-                // Fill the transfer buffer
-                let mut buffer_mem_map = transfer_buffer.map(&gpu_device, true);
-                let buffer_mem_map_mem_mut: &mut [Vertex] = buffer_mem_map.mem_mut();
-
-                for (index, &value) in primitive.vertices.iter().enumerate() {
-                    buffer_mem_map_mem_mut[index] = value;
-                }
-                buffer_mem_map.unmap();
-
-                // Where is the data
-                let data_location = TransferBufferLocation::default()
-                    .with_transfer_buffer(&transfer_buffer)
-                    .with_offset(0u32);
-
-                // Where to upload the data
-                let buffer_region = BufferRegion::default()
-                    .with_buffer(&vertex_buffer)
-                    .with_size(primitive_vertices_size)
-                    .with_offset(0u32);
-
-                // Upload the data
-                copy_pass.upload_to_gpu_buffer(data_location, buffer_region, true);
-
-                // Index stuff
-
-                // Create the vertex buffer
-                let index_buffer = gpu_device
-                    .create_buffer()
-                    .with_size(primitive_indices_size)
-                    .with_usage(BufferUsageFlags::INDEX)
-                    .build()
-                    .unwrap();
-
-                // Fill the transfer buffer
-                let mut buffer_mem_map = transfer_buffer.map(&gpu_device, true);
-
-                let buffer_mem_map_mem_mut: &mut [u32] = buffer_mem_map.mem_mut();
-
-                for (index, &value) in primitive.indices.iter().enumerate() {
-                    buffer_mem_map_mem_mut[index] = value;
-                }
-
-                buffer_mem_map.unmap();
-
-                // Where is the data
-                let data_location = TransferBufferLocation::default()
-                    .with_transfer_buffer(&transfer_buffer)
-                    .with_offset(0u32);
-
-                // Where to upload the data
-                let buffer_region = BufferRegion::default()
-                    .with_buffer(&index_buffer)
-                    .with_size(primitive_indices_size)
-                    // .with_size(primitive.indices.len() as u32)
-                    .with_offset(0u32);
-
-                // Upload the data
-                // The next line causes the model to not show up...
-                copy_pass.upload_to_gpu_buffer(data_location, buffer_region, true);
-
-                // Release the index transfer buffer
-                drop(transfer_buffer);
-
-                // Keep track of buffers
-                primitive_buffer_struct_vec.push(PrimitiveBufferStruct {
-                    vertex_buffer: vertex_buffer,
-                    vertex_count: primitive.vertices.len() as u32,
-                    index_buffer: index_buffer,
-                    index_count: primitive.indices.len() as u32,
-                    image_index: primitive.image_index,
-                });
-            }
-        }
-        for image in model.images_vec {
-            // let texture_format = match image.format {
-            //     gltf::image::Format::R8G8B8 => {TextureFormat::R8g8b8}
-            // };
-            let my_texture_create_info = TextureCreateInfo::new()
-                .with_type(TextureType::_2D)
-                .with_format(TextureFormat::R8g8b8a8Unorm)
-                // TODO - is this one supposed to be R8g8b8a8UnormSrgb ???
-                .with_usage(TextureUsage::SAMPLER)
-                .with_width(image.width)
-                .with_height(image.height)
-                .with_layer_count_or_depth(1)
-                .with_num_levels(1);
-            let my_texture = gpu_device.create_texture(my_texture_create_info).unwrap();
-
-            let my_sampler_create_info = SamplerCreateInfo::new()
-                // TODO - get sampler info from gltf model
-                .with_min_filter(Filter::Nearest)
-                .with_mag_filter(Filter::Nearest)
-                .with_mipmap_mode(SamplerMipmapMode::Nearest)
-                .with_address_mode_u(SamplerAddressMode::Repeat)
-                .with_address_mode_v(SamplerAddressMode::Repeat)
-                .with_address_mode_w(SamplerAddressMode::Repeat);
-            // .with_mip_lod_bias(value)
-            // .with_max_anisotropy(value)
-            // .with_compare_op(value)
-            // .with_min_lod(value)
-            // .with_max_lod(value)
-            // .with_enable_anisotropy(enable)
-            // .with_enable_compare(enable);
-            let my_sampler = gpu_device.create_sampler(my_sampler_create_info).unwrap();
-            samplers_vec.push(my_sampler);
-            println!("added a sampler, now there are {}", samplers_vec.len());
-
-            let texture_transfer_buffer = gpu_device
-                .create_transfer_buffer()
-                .with_size(image.width * image.height * (size_of::<c_float>() as u32) * 4) // guessing at the size of the texture data right now
-                .with_usage(TransferBufferUsage::UPLOAD)
-                .build()
-                .unwrap();
-            let texture_transfer_info = TextureTransferInfo::new()
-                .with_transfer_buffer(&texture_transfer_buffer)
-                .with_offset(0)
-                .with_pixels_per_row(image.width)
-                .with_rows_per_layer(image.height);
-            let texture_region = TextureRegion::new()
-                .with_texture(&my_texture)
-                .with_width(image.width)
-                .with_height(image.height)
-                .with_depth(1);
-            textures_vec.push(my_texture);
-
-            let mut texture_buffer_mem_map = texture_transfer_buffer.map(&gpu_device, true);
-            let texture_buffer_mem_map_mem_mut: &mut [_] = texture_buffer_mem_map.mem_mut();
-            for pixel_coord in 0..(image.width * image.height) as usize {
-                // If
-                match image.format {
-                    gltf::image::Format::R8G8B8 => {
-                        texture_buffer_mem_map_mem_mut[pixel_coord] = [
-                            image.pixels[pixel_coord * 3],
-                            image.pixels[pixel_coord * 3 + 1],
-                            image.pixels[pixel_coord * 3 + 2],
-                            u8::MAX,
-                        ];
-                    }
-                    gltf::image::Format::R8G8B8A8 => {
-                        texture_buffer_mem_map_mem_mut[pixel_coord] = [
-                            image.pixels[pixel_coord * 4],
-                            image.pixels[pixel_coord * 4 + 1],
-                            image.pixels[pixel_coord * 4 + 2],
-                            image.pixels[pixel_coord * 4 + 3],
-                        ];
-                    }
-                    _ => panic!("Image format not supported yet: {:?}", image.format),
-                }
-            }
-            texture_buffer_mem_map.unmap();
-            copy_pass.upload_to_gpu_texture(texture_transfer_info, texture_region, true);
-        }
-    }
-
-    // End the copy pass
-    gpu_device.end_copy_pass(copy_pass);
-    copy_command_buffer.submit().unwrap();
-
-    // Create the time uniform
-    // let mut time_uniform = UniformBufferTime { time: 0.0 };
+    let mut loaded_models = Vec::new();
+    loaded_models.push(load_model_and_copy_to_gpu(
+        "models/Low-Poly-Base_copy.glb",
+        &gpu_device,
+    ));
+    // loaded_models.push(load_model_and_copy_to_gpu( "models/Avocado.glb", &gpu_device, ));
+    // loaded_models.push(load_model_and_copy_to_gpu("models/MinimalTriangle.gltf", &gpu_device));
+    // loaded_models.push(load_model_and_copy_to_gpu("models/ABeautifulGame.glb", &gpu_device));
+    // loaded_models.push(load_model_and_copy_to_gpu( "models/GlassHurricaneCandleHolder.glb", &gpu_device, ));
 
     // Create the position uniform
     let mut position_uniform = UniformBufferPosition {
@@ -1028,12 +612,6 @@ pub fn main() {
         // Acquire the command buffer
         let mut command_buffer = gpu_device.acquire_command_buffer().unwrap();
 
-        // Update the time value in the time uniform
-        // time_uniform.time = game_ticks as f32 * 0.1;
-
-        // Push the time uniform data
-        // command_buffer.push_fragment_uniform_data(0, &time_uniform);
-
         // Update the position value in the position uniform
         position_uniform.x_pos = player_x;
         position_uniform.y_pos = player_y;
@@ -1071,50 +649,79 @@ pub fn main() {
         // Bind the graphics pipeline
         render_pass.bind_graphics_pipeline(&pipeline);
 
-        // Loop through all vertex buffers
-        for (_index, primitive_buffer_struct) in primitive_buffer_struct_vec.iter().enumerate() {
-            // Setup the buffer bindings for vertices
-            let buffer_bindings_vertex = BufferBinding::new()
-                .with_buffer(&primitive_buffer_struct.vertex_buffer)
-                .with_offset(0);
+        // Loop through all loaded models
+        // (Later - render the current state of the game or simulation, likely rendering multiples of each model)
+        for model in &loaded_models {
+            // Is there always at least 1 scene? I think so but not sure
+            let scene = model
+                .document
+                .default_scene()
+                .or(model.document.scenes().next())
+                .unwrap();
 
-            // Bind the vertex buffer
-            render_pass.bind_vertex_buffers(0, &[buffer_bindings_vertex]);
+            let mut remaining_node_transform_pairs = Vec::new();
 
-            // Setup the buffer bindings for indices
-            let buffer_bindings_index = BufferBinding::new()
-                .with_buffer(&primitive_buffer_struct.index_buffer)
-                .with_offset(0);
+            for node in scene.nodes() {
+                remaining_node_transform_pairs.push((node, ()));
+            }
 
-            // Bind the index buffer
-            render_pass.bind_index_buffer(&buffer_bindings_index, IndexElementSize::_32BIT);
+            while !remaining_node_transform_pairs.is_empty() {
+                // Take a node off the list
+                let (node, transform) = remaining_node_transform_pairs.pop().unwrap();
+                if let Some(mesh) = node.mesh() {
+                    // Render mesh with transform
 
-            // Bind the texture buffer? (Not sure)
-            // I feel like it shouldn't need to .clone() the texture
-            // render_pass.bind_fragment_storage_textures(0, &[my_texture.clone()]);
+                    let mesh_data = model.meshes.get(mesh.index()).unwrap();
+                    for primitive in mesh.primitives() {
+                        // Look up the primitive data
+                        let primitive_data = mesh_data.primitives.get(primitive.index()).unwrap();
 
-            // TODO - right now I am manually picking which texture for which primitive, need to figure that out in code
-            // let tex_to_use = match index {
-            //     0 => 1,
-            //     1 => 1,
-            //     2 => 1,
-            //     3 => 2,
-            //     4 => 3,
-            //     5 => 4,
-            //     6 => 5,
-            //     _ => 0,
-            // };
+                        // Setup the buffer bindings for vertices
+                        let buffer_bindings_vertex = BufferBinding::new()
+                            .with_buffer(&primitive_data.vertex_buffer)
+                            .with_offset(0);
 
-            let tex_to_use = primitive_buffer_struct.image_index;
+                        // Bind the vertex buffer
+                        render_pass.bind_vertex_buffers(0, &[buffer_bindings_vertex]);
 
-            // Bind sampler? (Not sure)
-            let texture_sampler_binding = TextureSamplerBinding::new()
-                .with_texture(&textures_vec[tex_to_use])
-                .with_sampler(&samplers_vec[tex_to_use]);
-            render_pass.bind_fragment_samplers(0, &[texture_sampler_binding]);
+                        // Setup the buffer bindings for indices
+                        let buffer_bindings_index = BufferBinding::new()
+                            .with_buffer(&primitive_data.index_buffer)
+                            .with_offset(0);
 
-            // Issue the draw call using the indexes as well as the
-            render_pass.draw_indexed_primitives(primitive_buffer_struct.index_count, 1, 0, 0, 0);
+                        // Bind the index buffer
+                        render_pass
+                            .bind_index_buffer(&buffer_bindings_index, IndexElementSize::_32BIT);
+
+                        // Determine the texture(s) to use
+                        let image_index = primitive
+                            .material()
+                            .pbr_metallic_roughness()
+                            .base_color_texture()
+                            .unwrap()
+                            .texture()
+                            .source()
+                            .index();
+
+                        let image_data = model.images.get(image_index).unwrap();
+
+                        // Bind sampler? (Not sure)
+                        let texture_sampler_binding = TextureSamplerBinding::new()
+                            .with_texture(&image_data.texture)
+                            .with_sampler(&image_data.sampler);
+                        render_pass.bind_fragment_samplers(0, &[texture_sampler_binding]);
+
+                        // Issue the draw call using the indexes as well as the
+                        render_pass.draw_indexed_primitives(primitive_data.index_count, 1, 0, 0, 0);
+                    }
+
+                    // End of rendering a mesh
+                }
+                for child_node in node.children() {
+                    // Add child nodes to the list
+                    remaining_node_transform_pairs.push((child_node, ()));
+                }
+            }
         }
 
         // End the render pass
