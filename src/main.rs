@@ -56,6 +56,25 @@ struct ModelData<'a> {
     document: Document,
 }
 
+struct Matrix {
+    a1: c_float,
+    a2: c_float,
+    a3: c_float,
+    a4: c_float,
+    b1: c_float,
+    b2: c_float,
+    b3: c_float,
+    b4: c_float,
+    c1: c_float,
+    c2: c_float,
+    c3: c_float,
+    c4: c_float,
+    d1: c_float,
+    d2: c_float,
+    d3: c_float,
+    d4: c_float,
+}
+
 fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> ModelData<'a> {
     // Load the model with the gltf crate's import function
     let (model_gltf, buffers, images) = gltf::import(model_path).unwrap();
@@ -503,10 +522,16 @@ pub fn main() {
         "models/Low-Poly-Base_copy.glb",
         &gpu_device,
     ));
-    // loaded_models.push(load_model_and_copy_to_gpu( "models/Avocado.glb", &gpu_device, ));
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/Avocado.glb",
+    //     &gpu_device,
+    // ));
     // loaded_models.push(load_model_and_copy_to_gpu("models/MinimalTriangle.gltf", &gpu_device));
     // loaded_models.push(load_model_and_copy_to_gpu("models/ABeautifulGame.glb", &gpu_device));
-    // loaded_models.push(load_model_and_copy_to_gpu( "models/GlassHurricaneCandleHolder.glb", &gpu_device, ));
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/GlassHurricaneCandleHolder.glb",
+    //     &gpu_device,
+    // ));
 
     // Create the position uniform
     let mut position_uniform = UniformBufferPosition {
@@ -662,14 +687,32 @@ pub fn main() {
             let mut remaining_node_transform_pairs = Vec::new();
 
             for node in scene.nodes() {
-                remaining_node_transform_pairs.push((node, ()));
+                // Start with identity matrix
+                remaining_node_transform_pairs.push((
+                    node,
+                    [
+                        [1f32, 0f32, 0f32, 0f32],
+                        [0f32, 1f32, 0f32, 0f32],
+                        [0f32, 0f32, 1f32, 0f32],
+                        [0f32, 0f32, 0f32, 1f32],
+                    ],
+                ));
             }
 
             while !remaining_node_transform_pairs.is_empty() {
                 // Take a node off the list
-                let (node, transform) = remaining_node_transform_pairs.pop().unwrap();
+                let (node, inherited_transform_matrix) =
+                    remaining_node_transform_pairs.pop().unwrap();
+
+                // Calculate transform for this node based on it's inherited transform and it's local transform
+                let multiplied_transform_matrix =
+                    multiply_matrices(inherited_transform_matrix, node.transform().matrix());
+
                 if let Some(mesh) = node.mesh() {
                     // Render mesh with transform
+
+                    // Send transform to shader as a uniform
+                    command_buffer.push_vertex_uniform_data(1, &multiplied_transform_matrix);
 
                     let mesh_data = model.meshes.get(mesh.index()).unwrap();
                     for primitive in mesh.primitives() {
@@ -705,13 +748,13 @@ pub fn main() {
 
                         let image_data = model.images.get(image_index).unwrap();
 
-                        // Bind sampler? (Not sure)
+                        // Bind sampler
                         let texture_sampler_binding = TextureSamplerBinding::new()
                             .with_texture(&image_data.texture)
                             .with_sampler(&image_data.sampler);
                         render_pass.bind_fragment_samplers(0, &[texture_sampler_binding]);
 
-                        // Issue the draw call using the indexes as well as the
+                        // Issue the draw call using the indexes
                         render_pass.draw_indexed_primitives(primitive_data.index_count, 1, 0, 0, 0);
                     }
 
@@ -719,7 +762,7 @@ pub fn main() {
                 }
                 for child_node in node.children() {
                     // Add child nodes to the list
-                    remaining_node_transform_pairs.push((child_node, ()));
+                    remaining_node_transform_pairs.push((child_node, multiplied_transform_matrix));
                 }
             }
         }
@@ -739,4 +782,34 @@ pub fn main() {
     // drop(pipeline);
     // drop(window);
     // drop(gpu_device);
+}
+
+fn multiply_matrices(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
+    // https://en.wikipedia.org/wiki/Matrix_multiplication
+    [
+        [
+            a[0][0] * b[0][0] + a[0][1] * b[1][0] + a[0][2] * b[2][0] + a[0][3] * b[3][0],
+            a[0][0] * b[0][1] + a[0][1] * b[1][1] + a[0][2] * b[2][1] + a[0][3] * b[3][1],
+            a[0][0] * b[0][2] + a[0][1] * b[1][2] + a[0][2] * b[2][2] + a[0][3] * b[3][2],
+            a[0][0] * b[0][3] + a[0][1] * b[1][3] + a[0][2] * b[2][3] + a[0][3] * b[3][3],
+        ],
+        [
+            a[1][0] * b[0][0] + a[1][1] * b[1][0] + a[1][2] * b[2][0] + a[1][3] * b[3][0],
+            a[1][0] * b[0][1] + a[1][1] * b[1][1] + a[1][2] * b[2][1] + a[1][3] * b[3][1],
+            a[1][0] * b[0][2] + a[1][1] * b[1][2] + a[1][2] * b[2][2] + a[1][3] * b[3][2],
+            a[1][0] * b[0][3] + a[1][1] * b[1][3] + a[1][2] * b[2][3] + a[1][3] * b[3][3],
+        ],
+        [
+            a[2][0] * b[0][0] + a[2][1] * b[1][0] + a[2][2] * b[2][0] + a[2][3] * b[3][0],
+            a[2][0] * b[0][1] + a[2][1] * b[1][1] + a[2][2] * b[2][1] + a[2][3] * b[3][1],
+            a[2][0] * b[0][2] + a[2][1] * b[1][2] + a[2][2] * b[2][2] + a[2][3] * b[3][2],
+            a[2][0] * b[0][3] + a[2][1] * b[1][3] + a[2][2] * b[2][3] + a[2][3] * b[3][3],
+        ],
+        [
+            a[3][0] * b[0][0] + a[3][1] * b[1][0] + a[3][2] * b[2][0] + a[3][3] * b[3][0],
+            a[3][0] * b[0][1] + a[3][1] * b[1][1] + a[3][2] * b[2][1] + a[3][3] * b[3][1],
+            a[3][0] * b[0][2] + a[3][1] * b[1][2] + a[3][2] * b[2][2] + a[3][3] * b[3][2],
+            a[3][0] * b[0][3] + a[3][1] * b[1][3] + a[3][2] * b[2][3] + a[3][3] * b[3][3],
+        ],
+    ]
 }

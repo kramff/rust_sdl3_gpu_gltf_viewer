@@ -13,6 +13,7 @@ layout (location = 1) out vec2 v_tex_coord;
 layout(std140, set = 1, binding = 0) uniform UniformBlock {
     float x_pos;
     float y_pos;
+    mat4 transform_matrix;
 };
 
 void main()
