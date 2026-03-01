@@ -30,10 +30,10 @@ struct Vertex {
     v: c_float,
 }
 
-struct UniformBufferPosition {
-    x_pos: c_float,
-    y_pos: c_float,
-}
+// struct UniformBufferPosition {
+//     x_pos: c_float,
+//     y_pos: c_float,
+// }
 
 struct PrimitiveData {
     vertex_buffer: Buffer,
@@ -54,25 +54,6 @@ struct ModelData<'a> {
     meshes: Vec<MeshData>,
     images: Vec<ImageData<'a>>,
     document: Document,
-}
-
-struct Matrix {
-    a1: c_float,
-    a2: c_float,
-    a3: c_float,
-    a4: c_float,
-    b1: c_float,
-    b2: c_float,
-    b3: c_float,
-    b4: c_float,
-    c1: c_float,
-    c2: c_float,
-    c3: c_float,
-    c4: c_float,
-    d1: c_float,
-    d2: c_float,
-    d3: c_float,
-    d4: c_float,
 }
 
 fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> ModelData<'a> {
@@ -518,26 +499,34 @@ pub fn main() {
     drop(fragment_shader);
 
     let mut loaded_models = Vec::new();
-    loaded_models.push(load_model_and_copy_to_gpu(
-        "models/Low-Poly-Base_copy.glb",
-        &gpu_device,
-    ));
+
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/Low-Poly-Base_copy.glb",
+    //     &gpu_device,
+    // ));
+
     // loaded_models.push(load_model_and_copy_to_gpu(
     //     "models/Avocado.glb",
     //     &gpu_device,
     // ));
-    // loaded_models.push(load_model_and_copy_to_gpu("models/MinimalTriangle.gltf", &gpu_device));
-    // loaded_models.push(load_model_and_copy_to_gpu("models/ABeautifulGame.glb", &gpu_device));
+
     // loaded_models.push(load_model_and_copy_to_gpu(
-    //     "models/GlassHurricaneCandleHolder.glb",
+    //     "models/MinimalTriangle.gltf",
     //     &gpu_device,
     // ));
 
+    // loaded_models.push(load_model_and_copy_to_gpu("models/ABeautifulGame.glb", &gpu_device));
+
+    loaded_models.push(load_model_and_copy_to_gpu(
+        "models/GlassHurricaneCandleHolder.glb",
+        &gpu_device,
+    ));
+
     // Create the position uniform
-    let mut position_uniform = UniformBufferPosition {
-        x_pos: 0.0,
-        y_pos: 0.0,
-    };
+    // let mut position_uniform = UniformBufferPosition {
+    //     x_pos: 0.0,
+    //     y_pos: 0.0,
+    // };
 
     // Done with gpu init
 
@@ -545,6 +534,7 @@ pub fn main() {
     let mut player_x = 0.0;
     let mut player_y = 0.0;
     // let mut game_ticks = 0u32;
+    let mut player_z = 0.0;
 
     // Keyboard state variables
     let mut key_up = false;
@@ -631,6 +621,7 @@ pub fn main() {
         if key_right {
             player_x += 0.02;
         }
+        player_z += 0.0001;
 
         // End of game code
 
@@ -638,11 +629,20 @@ pub fn main() {
         let mut command_buffer = gpu_device.acquire_command_buffer().unwrap();
 
         // Update the position value in the position uniform
-        position_uniform.x_pos = player_x;
-        position_uniform.y_pos = player_y;
+        // position_uniform.x_pos = player_x;
+        // position_uniform.y_pos = player_y;
+
+        // let player_rotation = multiply_matrices(
+        //     multiply_matrices(
+        //         matrix_rotate_around_x(player_y),
+        //         matrix_rotate_around_y(player_x),
+        //     ),
+        //     matrix_rotate_around_z(player_z),
+        // );
+        let player_rotation = matrix_rotate_multi_axis(player_z, player_x, player_y);
 
         // Push the position uniform data
-        command_buffer.push_vertex_uniform_data(0, &position_uniform);
+        // command_buffer.push_vertex_uniform_data(0, &position_uniform);
 
         // Get the swapchain texture
         let swapchain_texture = command_buffer
@@ -688,15 +688,10 @@ pub fn main() {
 
             for node in scene.nodes() {
                 // Start with identity matrix
-                remaining_node_transform_pairs.push((
-                    node,
-                    [
-                        [1f32, 0f32, 0f32, 0f32],
-                        [0f32, 1f32, 0f32, 0f32],
-                        [0f32, 0f32, 1f32, 0f32],
-                        [0f32, 0f32, 0f32, 1f32],
-                    ],
-                ));
+                // remaining_node_transform_pairs.push((node, IDENTITY_MATRIX));
+
+                // Start with current player rotation
+                remaining_node_transform_pairs.push((node, player_rotation));
             }
 
             while !remaining_node_transform_pairs.is_empty() {
@@ -712,7 +707,9 @@ pub fn main() {
                     // Render mesh with transform
 
                     // Send transform to shader as a uniform
-                    command_buffer.push_vertex_uniform_data(1, &multiplied_transform_matrix);
+                    command_buffer.push_vertex_uniform_data(0, &multiplied_transform_matrix);
+                    // command_buffer.push_vertex_uniform_data(0, &IDENTITY_MATRIX);
+                    // command_buffer.push_vertex_uniform_data(0, &player_rotation);
 
                     let mesh_data = model.meshes.get(mesh.index()).unwrap();
                     for primitive in mesh.primitives() {
@@ -784,6 +781,61 @@ pub fn main() {
     // drop(gpu_device);
 }
 
+const IDENTITY_MATRIX: [[f32; 4]; 4] = [
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+];
+
+fn matrix_rotate_around_x(a: f32) -> [[f32; 4]; 4] {
+    // roll
+    [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, a.cos(), -a.sin(), 0.0],
+        [0.0, a.sin(), a.cos(), 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+}
+fn matrix_rotate_around_y(a: f32) -> [[f32; 4]; 4] {
+    // pitch
+    [
+        [a.cos(), 0.0, a.sin(), 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [-a.sin(), 0.0, a.cos(), 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+}
+fn matrix_rotate_around_z(a: f32) -> [[f32; 4]; 4] {
+    // yaw
+    [
+        [a.cos(), -a.sin(), 0.0, 0.0],
+        [a.sin(), a.cos(), 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+}
+fn matrix_rotate_multi_axis(x: f32, y: f32, z: f32) -> [[f32; 4]; 4] {
+    // x, y, z : yaw, pitch, roll
+    // https://en.wikipedia.org/wiki/Rotation_matrix
+    [
+        [
+            x.cos() * y.cos(),
+            x.cos() * y.sin() * z.sin() - x.sin() * z.cos(),
+            x.cos() * y.sin() * z.cos() + x.sin() * z.sin(),
+            0.0,
+        ],
+        [
+            x.sin() * y.cos(),
+            x.sin() * y.sin() * z.sin() + x.cos() * z.cos(),
+            x.sin() * y.sin() * z.cos() - x.cos() * z.sin(),
+            0.0,
+        ],
+        [-y.sin(), y.cos() * z.sin(), y.cos() * z.cos(), 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+}
+
 fn multiply_matrices(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
     // https://en.wikipedia.org/wiki/Matrix_multiplication
     [
@@ -812,4 +864,17 @@ fn multiply_matrices(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
             a[3][0] * b[0][3] + a[3][1] * b[1][3] + a[3][2] * b[2][3] + a[3][3] * b[3][3],
         ],
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{IDENTITY_MATRIX, multiply_matrices};
+
+    #[test]
+    fn test_multiply_matrices_1() {
+        assert_eq!(
+            multiply_matrices(IDENTITY_MATRIX.clone(), IDENTITY_MATRIX.clone()),
+            IDENTITY_MATRIX
+        );
+    }
 }
