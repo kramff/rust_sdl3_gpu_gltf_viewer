@@ -336,6 +336,67 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
     }
 }
 
+fn create_dummy_image_and_copy_to_gpu<'a>(gpu_device: &Device) -> ImageData<'a> {
+    // Start a copy pass
+    let copy_command_buffer = gpu_device.acquire_command_buffer().unwrap();
+    let copy_pass = gpu_device.begin_copy_pass(&copy_command_buffer).unwrap();
+
+    // how small can it be?
+    let img_size = 1u32;
+    let texture_create_info = TextureCreateInfo::new()
+        .with_type(TextureType::_2D)
+        .with_format(TextureFormat::R8g8b8a8Unorm)
+        .with_usage(TextureUsage::SAMPLER)
+        .with_width(img_size)
+        .with_height(img_size)
+        .with_layer_count_or_depth(1)
+        .with_num_levels(1);
+    let texture = gpu_device.create_texture(texture_create_info).unwrap();
+
+    let sampler_create_info = SamplerCreateInfo::new()
+        .with_min_filter(Filter::Nearest)
+        .with_mag_filter(Filter::Nearest)
+        .with_mipmap_mode(SamplerMipmapMode::Nearest)
+        .with_address_mode_u(SamplerAddressMode::Repeat)
+        .with_address_mode_v(SamplerAddressMode::Repeat)
+        .with_address_mode_w(SamplerAddressMode::Repeat);
+    let sampler = gpu_device.create_sampler(sampler_create_info).unwrap();
+
+    let texture_transfer_buffer = gpu_device
+        .create_transfer_buffer()
+        .with_size(img_size * img_size * (size_of::<c_float>() as u32) * 4)
+        .with_usage(TransferBufferUsage::UPLOAD)
+        .build()
+        .unwrap();
+    let texture_transfer_info = TextureTransferInfo::new()
+        .with_transfer_buffer(&texture_transfer_buffer)
+        .with_offset(0)
+        .with_pixels_per_row(img_size)
+        .with_rows_per_layer(img_size);
+    let texture_region = TextureRegion::new()
+        .with_texture(&texture)
+        .with_width(img_size)
+        .with_height(img_size)
+        .with_depth(1);
+
+    let mut texture_buffer_mem_map = texture_transfer_buffer.map(&gpu_device, true);
+    let texture_buffer_mem_map_mem_mut: &mut [_] = texture_buffer_mem_map.mem_mut();
+    for pixel_coord in 0..(img_size * img_size) as usize {
+        texture_buffer_mem_map_mem_mut[pixel_coord] = [u8::MAX, u8::MAX, u8::MAX, u8::MAX];
+    }
+    texture_buffer_mem_map.unmap();
+    copy_pass.upload_to_gpu_texture(texture_transfer_info, texture_region, true);
+
+    // End the copy pass
+    gpu_device.end_copy_pass(copy_pass);
+    copy_command_buffer.submit().unwrap();
+
+    ImageData {
+        texture: texture,
+        sampler: sampler,
+    }
+}
+
 pub fn main() {
     // Initialize SDL3
     let sdl_context = sdl3::init().unwrap();
@@ -500,6 +561,8 @@ pub fn main() {
 
     let mut loaded_models = Vec::new();
 
+    // Load a model...
+
     // loaded_models.push(load_model_and_copy_to_gpu(
     //     "models/Low-Poly-Base_copy.glb",
     //     &gpu_device,
@@ -517,16 +580,26 @@ pub fn main() {
 
     // loaded_models.push(load_model_and_copy_to_gpu("models/ABeautifulGame.glb", &gpu_device));
 
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/GlassHurricaneCandleHolder.glb",
+    //     &gpu_device,
+    // ));
+
     loaded_models.push(load_model_and_copy_to_gpu(
-        "models/GlassHurricaneCandleHolder.glb",
+        "models/axes_test.glb",
         &gpu_device,
     ));
+
+    // Put a dummy image into the gpu
+    let dummy_image = create_dummy_image_and_copy_to_gpu(&gpu_device);
 
     // Create the position uniform
     // let mut position_uniform = UniformBufferPosition {
     //     x_pos: 0.0,
     //     y_pos: 0.0,
     // };
+
+    // Create a dummy image to use when no image is needed
 
     // Done with gpu init
 
@@ -541,6 +614,8 @@ pub fn main() {
     let mut key_down = false;
     let mut key_left = false;
     let mut key_right = false;
+    let mut key_q = false;
+    let mut key_e = false;
 
     // Event handling
     let mut event_pump = sdl_context.event_pump().unwrap();
@@ -579,6 +654,18 @@ pub fn main() {
                 } => {
                     key_right = true;
                 }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Q),
+                    ..
+                } => {
+                    key_q = true;
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::E),
+                    ..
+                } => {
+                    key_e = true;
+                }
                 // Up, down, left, right RELEASED events
                 Event::KeyUp {
                     keycode: Some(Keycode::Up),
@@ -604,6 +691,18 @@ pub fn main() {
                 } => {
                     key_right = false;
                 }
+                Event::KeyUp {
+                    keycode: Some(Keycode::Q),
+                    ..
+                } => {
+                    key_q = false;
+                }
+                Event::KeyUp {
+                    keycode: Some(Keycode::E),
+                    ..
+                } => {
+                    key_e = false;
+                }
                 // Anything else
                 _ => {}
             }
@@ -621,7 +720,12 @@ pub fn main() {
         if key_right {
             player_x += 0.02;
         }
-        player_z += 0.0001;
+        if key_q {
+            player_z += 0.02;
+        }
+        if key_e {
+            player_z -= 0.02;
+        }
 
         // End of game code
 
@@ -632,14 +736,21 @@ pub fn main() {
         // position_uniform.x_pos = player_x;
         // position_uniform.y_pos = player_y;
 
-        // let player_rotation = multiply_matrices(
+        // let player_transform = multiply_matrices(
         //     multiply_matrices(
         //         matrix_rotate_around_x(player_y),
         //         matrix_rotate_around_y(player_x),
         //     ),
         //     matrix_rotate_around_z(player_z),
         // );
-        let player_rotation = matrix_rotate_multi_axis(player_z, player_x, player_y);
+        // let player_transform = multiply_matrices(
+        //     multiply_matrices(
+        //         matrix_scale_multi(0.3, 0.3, 0.3),
+        //         matrix_rotate_multi_axis(0.0, player_x, player_y),
+        //     ),
+        //     matrix_translate_multi(player_z, player_z, player_z),
+        // );
+        let player_transform = matrix_translate_multi(player_x, player_y, player_z);
 
         // Push the position uniform data
         // command_buffer.push_vertex_uniform_data(0, &position_uniform);
@@ -691,7 +802,7 @@ pub fn main() {
                 // remaining_node_transform_pairs.push((node, IDENTITY_MATRIX));
 
                 // Start with current player rotation
-                remaining_node_transform_pairs.push((node, player_rotation));
+                remaining_node_transform_pairs.push((node, player_transform));
             }
 
             while !remaining_node_transform_pairs.is_empty() {
@@ -709,7 +820,7 @@ pub fn main() {
                     // Send transform to shader as a uniform
                     command_buffer.push_vertex_uniform_data(0, &multiplied_transform_matrix);
                     // command_buffer.push_vertex_uniform_data(0, &IDENTITY_MATRIX);
-                    // command_buffer.push_vertex_uniform_data(0, &player_rotation);
+                    // command_buffer.push_vertex_uniform_data(0, &player_transform);
 
                     let mesh_data = model.meshes.get(mesh.index()).unwrap();
                     for primitive in mesh.primitives() {
@@ -734,22 +845,30 @@ pub fn main() {
                             .bind_index_buffer(&buffer_bindings_index, IndexElementSize::_32BIT);
 
                         // Determine the texture(s) to use
-                        let image_index = primitive
+                        let base_color_texture_option = primitive
                             .material()
                             .pbr_metallic_roughness()
-                            .base_color_texture()
-                            .unwrap()
-                            .texture()
-                            .source()
-                            .index();
+                            .base_color_texture();
 
-                        let image_data = model.images.get(image_index).unwrap();
+                        if let Some(base_color_texture) = base_color_texture_option {
+                            // Texture has image
+                            let image_index = base_color_texture.texture().source().index();
+                            let image_data = model.images.get(image_index).unwrap();
 
-                        // Bind sampler
-                        let texture_sampler_binding = TextureSamplerBinding::new()
-                            .with_texture(&image_data.texture)
-                            .with_sampler(&image_data.sampler);
-                        render_pass.bind_fragment_samplers(0, &[texture_sampler_binding]);
+                            // Bind sampler
+                            let texture_sampler_binding = TextureSamplerBinding::new()
+                                .with_texture(&image_data.texture)
+                                .with_sampler(&image_data.sampler);
+                            render_pass.bind_fragment_samplers(0, &[texture_sampler_binding]);
+                        } else {
+                            // No image - use dummy image
+
+                            // Bind sampler
+                            let texture_sampler_binding = TextureSamplerBinding::new()
+                                .with_texture(&dummy_image.texture)
+                                .with_sampler(&dummy_image.sampler);
+                            render_pass.bind_fragment_samplers(0, &[texture_sampler_binding]);
+                        }
 
                         // Issue the draw call using the indexes
                         render_pass.draw_indexed_primitives(primitive_data.index_count, 1, 0, 0, 0);
@@ -863,6 +982,28 @@ fn multiply_matrices(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
             a[3][0] * b[0][2] + a[3][1] * b[1][2] + a[3][2] * b[2][2] + a[3][3] * b[3][2],
             a[3][0] * b[0][3] + a[3][1] * b[1][3] + a[3][2] * b[2][3] + a[3][3] * b[3][3],
         ],
+    ]
+}
+
+fn matrix_scale_multi(x: f32, y: f32, z: f32) -> [[f32; 4]; 4] {
+    [
+        [x, 0.0, 0.0, 0.0],
+        [0.0, y, 0.0, 0.0],
+        [0.0, 0.0, z, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+}
+
+fn matrix_translate_multi(x: f32, y: f32, z: f32) -> [[f32; 4]; 4] {
+    [
+        // [1.0, 0.0, 0.0, 0.0],
+        // [0.0, 1.0, 0.0, 0.0],
+        // [0.0, 0.0, 1.0, 0.0],
+        // [x, y, z, 1.0],
+        [1.0, 0.0, 0.0, x],
+        [0.0, 1.0, 0.0, y],
+        [0.0, 0.0, 1.0, z],
+        [0.0, 0.0, 0.0, 1.0],
     ]
 }
 

@@ -22,6 +22,14 @@ void main()
     vec4 a_position_transformed = vec4(a_position, 1.0) * transform_matrix;
     // vec4 a_position_transformed = vec4(a_position, 1.0);
 
+    // change the x and y values with the z value to create the illusion of distance/depth
+    vec4 a_position_projected = vec4(
+        a_position_transformed.x / (5 + a_position_transformed.z),
+        a_position_transformed.y / (5 + a_position_transformed.z),
+        a_position_transformed.z,
+        a_position_transformed.w
+    );
+
     // https://learnopengl.com/Advanced-OpenGL/Depth-testing
     // Z from 3d coordinates, plus a bit to push away from camera
     // float one_over_z = 1.0f / (a_position_transformed.z + 1.1);
@@ -31,11 +39,11 @@ void main()
     // float one_over_far = 1.0f / 10.0f;
     // Depth = (1 / z - 1 / near) / (1 / far - 1 / near)
     // float depth = (one_over_z - one_over_near) / (one_over_far - one_over_near);
-    float depth = (1.0f / (a_position_transformed.z + 1.1f) - 10.0f) /  -10.0f;
+    float depth = (1.0f / (a_position_projected.z + 1.1f) - 10.0f) /  -10.0f;
 
     gl_Position = vec4(
-        a_position_transformed.x,
-        a_position_transformed.y,
+        a_position_projected.x,
+        a_position_projected.y,
         depth,
         1.0f
     );
