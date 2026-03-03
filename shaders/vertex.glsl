@@ -24,11 +24,13 @@ void main()
 
     // change the x and y values with the z value to create the illusion of distance/depth
     vec4 a_position_projected = vec4(
-        a_position_transformed.x / (5 + a_position_transformed.z),
-        a_position_transformed.y / (5 + a_position_transformed.z),
+        4 * a_position_transformed.x / (4 + a_position_transformed.z),
+        4 * a_position_transformed.y / (4 + a_position_transformed.z),
         a_position_transformed.z,
         a_position_transformed.w
     );
+
+    // vec4 a_position_projected = a_position_transformed;
 
     // https://learnopengl.com/Advanced-OpenGL/Depth-testing
     // Z from 3d coordinates, plus a bit to push away from camera

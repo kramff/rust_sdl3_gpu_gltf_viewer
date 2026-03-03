@@ -515,19 +515,20 @@ pub fn main() {
     // Set up depth stencil
     let depth_stencil_target_info = DepthStencilTargetInfo::new()
         .with_texture(&mut depth_stencil_texture)
-        // .with_clear_depth(1.0)
-        .with_clear_depth(0.0)
+        .with_clear_depth(1.0)
+        // .with_clear_depth(0.0)
         .with_load_op(LoadOp::CLEAR)
         .with_store_op(StoreOp::STORE)
         .with_stencil_load_op(LoadOp::CLEAR)
         .with_stencil_store_op(StoreOp::STORE)
         .with_cycle(true)
-        // .with_clear_stencil(0);
-        .with_clear_stencil(1);
+        .with_clear_stencil(0);
+    // .with_clear_stencil(1);
 
     let depth_stencil_state = DepthStencilState::new()
         // .with_compare_op(CompareOp::LessOrEqual)
-        .with_compare_op(CompareOp::Greater)
+        .with_compare_op(CompareOp::Less)
+        // .with_compare_op(CompareOp::Greater)
         // .with_back_stencil_state(value)
         // .with_front_stencil_state(value)
         // .with_compare_mask(value)
@@ -563,10 +564,10 @@ pub fn main() {
 
     // Load a model...
 
-    // loaded_models.push(load_model_and_copy_to_gpu(
-    //     "models/Low-Poly-Base_copy.glb",
-    //     &gpu_device,
-    // ));
+    loaded_models.push(load_model_and_copy_to_gpu(
+        "models/Low-Poly-Base_copy.glb",
+        &gpu_device,
+    ));
 
     // loaded_models.push(load_model_and_copy_to_gpu(
     //     "models/Avocado.glb",
@@ -585,10 +586,10 @@ pub fn main() {
     //     &gpu_device,
     // ));
 
-    loaded_models.push(load_model_and_copy_to_gpu(
-        "models/axes_test.glb",
-        &gpu_device,
-    ));
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/axes_test.glb",
+    //     &gpu_device,
+    // ));
 
     // Put a dummy image into the gpu
     let dummy_image = create_dummy_image_and_copy_to_gpu(&gpu_device);
@@ -606,7 +607,7 @@ pub fn main() {
     // Initialize game variables
     let mut player_x = 0.0;
     let mut player_y = 0.0;
-    // let mut game_ticks = 0u32;
+    let mut game_ticks = 0u32;
     let mut player_z = 0.0;
 
     // Keyboard state variables
@@ -617,10 +618,20 @@ pub fn main() {
     let mut key_q = false;
     let mut key_e = false;
 
+    // Mouse state variables
+    let mut mouse_left = false;
+    let mut mouse_middle = false;
+    let mut mouse_right = false;
+    let mut mouse_x = 0.0;
+    let mut mouse_y = 0.0;
+
     // Event handling
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
-        // game_ticks += 1;
+        game_ticks += 1;
+        if game_ticks % 100 == 0 {
+            println!("x: {}, y: {}, z: {}", player_x, player_y, player_z);
+        }
         for event in event_pump.poll_iter() {
             match event {
                 // Esc - Quit button
@@ -703,6 +714,11 @@ pub fn main() {
                 } => {
                     key_e = false;
                 }
+                // Mouse events
+                Event::MouseMotion { x, y, .. } => {
+                    mouse_x = x;
+                    mouse_y = y;
+                }
                 // Anything else
                 _ => {}
             }
@@ -750,7 +766,10 @@ pub fn main() {
         //     ),
         //     matrix_translate_multi(player_z, player_z, player_z),
         // );
-        let player_transform = matrix_translate_multi(player_x, player_y, player_z);
+        let player_transform = multiply_matrices(
+            matrix_translate_multi(player_x, player_y, player_z),
+            matrix_rotate_multi_axis(0.0, (mouse_x - 256.0) / 64.0, (mouse_y - 256.0) / 64.0),
+        );
 
         // Push the position uniform data
         // command_buffer.push_vertex_uniform_data(0, &position_uniform);
@@ -811,8 +830,11 @@ pub fn main() {
                     remaining_node_transform_pairs.pop().unwrap();
 
                 // Calculate transform for this node based on it's inherited transform and it's local transform
+                // Wrong order...?
+                // let multiplied_transform_matrix =
+                //     multiply_matrices(inherited_transform_matrix, node.transform().matrix());
                 let multiplied_transform_matrix =
-                    multiply_matrices(inherited_transform_matrix, node.transform().matrix());
+                    multiply_matrices(node.transform().matrix(), inherited_transform_matrix);
 
                 if let Some(mesh) = node.mesh() {
                     // Render mesh with transform
