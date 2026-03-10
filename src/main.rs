@@ -4,10 +4,12 @@
 extern crate sdl3;
 
 use gltf::Document;
+use imgui_sdl3::ImGuiSdl3;
 use sdl3::event::Event;
 use sdl3::gpu::*;
 use sdl3::keyboard::Keycode;
 use sdl3::libc::c_float;
+use sdl3::mouse::MouseButton;
 use sdl3::pixels::Color;
 use sdl3::sys::gpu::*;
 use std::time::Duration;
@@ -399,7 +401,7 @@ fn create_dummy_image_and_copy_to_gpu<'a>(gpu_device: &Device) -> ImageData<'a> 
 
 pub fn main() {
     // Initialize SDL3
-    let sdl_context = sdl3::init().unwrap();
+    let mut sdl_context = sdl3::init().unwrap();
 
     // Get video subsystem
     let video_subsystem = sdl_context.video().unwrap();
@@ -417,6 +419,19 @@ pub fn main() {
         .unwrap()
         .with_window(&window)
         .unwrap();
+
+    // Create imgui platform and renderer
+    let mut imgui = ImGuiSdl3::new(&gpu_device, &window, |ctx| {
+        // Disable creation of files on disk (Not sure, this is from the example in the repo)
+        ctx.set_ini_filename(None);
+        ctx.set_log_filename(None);
+
+        // Set up fonts
+        // ctx.fonts()
+        //     .add_font(&[imgui::FontSource::DefaultFontData { config: None }]);
+
+        // (Maybe need to do more things here? Not sure, example says "setup platform and renderer")
+    });
 
     // Load the vertex shader code
     let vertex_shader_code = include_bytes!("../shaders/vertex.spv");
@@ -591,6 +606,11 @@ pub fn main() {
     //     &gpu_device,
     // ));
 
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/translate_test.glb",
+    //     &gpu_device,
+    // ));
+
     // Put a dummy image into the gpu
     let dummy_image = create_dummy_image_and_copy_to_gpu(&gpu_device);
 
@@ -617,22 +637,32 @@ pub fn main() {
     let mut key_right = false;
     let mut key_q = false;
     let mut key_e = false;
+    let mut key_r = false;
 
     // Mouse state variables
-    let mut mouse_left = false;
-    let mut mouse_middle = false;
-    let mut mouse_right = false;
-    let mut mouse_x = 0.0;
-    let mut mouse_y = 0.0;
+    // let mut mouse_left = false;
+    // let mut mouse_middle = false;
+    // let mut mouse_right = false;
+    // let mut mouse_x = 0.0;
+    // let mut mouse_y = 0.0;
+    let mut mouse_down = false;
+    let mut mouse_drag_x = 0.0;
+    let mut mouse_drag_y = 0.0;
+
+    let animation_number = 0;
 
     // Event handling
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
         game_ticks += 1;
-        if game_ticks % 100 == 0 {
-            println!("x: {}, y: {}, z: {}", player_x, player_y, player_z);
-        }
+        // if game_ticks % 100 == 0 {
+        //     println!(
+        //         "x: {}, y: {}, z: {}, xr: {}, yr: {}, zr: {}",
+        //         player_x, player_y, player_z, mouse_drag_x, mouse_drag_y, 0
+        //     );
+        // }
         for event in event_pump.poll_iter() {
+            imgui.handle_event(&event);
             match event {
                 // Esc - Quit button
                 Event::Quit { .. }
@@ -677,6 +707,12 @@ pub fn main() {
                 } => {
                     key_e = true;
                 }
+                Event::KeyDown {
+                    keycode: Some(Keycode::R),
+                    ..
+                } => {
+                    key_r = true;
+                }
                 // Up, down, left, right RELEASED events
                 Event::KeyUp {
                     keycode: Some(Keycode::Up),
@@ -714,10 +750,32 @@ pub fn main() {
                 } => {
                     key_e = false;
                 }
+                Event::KeyUp {
+                    keycode: Some(Keycode::R),
+                    ..
+                } => {
+                    key_r = false;
+                }
                 // Mouse events
-                Event::MouseMotion { x, y, .. } => {
-                    mouse_x = x;
-                    mouse_y = y;
+                Event::MouseMotion { xrel, yrel, .. } => {
+                    // mouse_x = x;
+                    // mouse_y = y;
+                    if mouse_down {
+                        mouse_drag_x += xrel;
+                        mouse_drag_y += yrel;
+                    }
+                }
+                Event::MouseButtonDown {
+                    mouse_btn: MouseButton::Left,
+                    ..
+                } => {
+                    mouse_down = true;
+                }
+                Event::MouseButtonUp {
+                    mouse_btn: MouseButton::Left,
+                    ..
+                } => {
+                    mouse_down = false;
                 }
                 // Anything else
                 _ => {}
@@ -741,6 +799,13 @@ pub fn main() {
         }
         if key_e {
             player_z -= 0.02;
+        }
+        if key_r {
+            player_x = 0.0;
+            player_y = 0.0;
+            player_z = 0.0;
+            mouse_drag_x = 0.0;
+            mouse_drag_y = 0.0;
         }
 
         // End of game code
@@ -766,10 +831,16 @@ pub fn main() {
         //     ),
         //     matrix_translate_multi(player_z, player_z, player_z),
         // );
-        let player_transform = multiply_matrices(
+        let player_transform = multiply_matrices_chain(vec![
             matrix_translate_multi(player_x, player_y, player_z),
-            matrix_rotate_multi_axis(0.0, (mouse_x - 256.0) / 64.0, (mouse_y - 256.0) / 64.0),
-        );
+            // Scale X by -1 to convert from gltf right handedness to sdl-gpu left handedness
+            matrix_scale_multi(-1.0, 1.0, 1.0),
+            matrix_rotate_multi_axis(0.0, (mouse_drag_x) / 64.0, (mouse_drag_y) / 64.0),
+        ]);
+        // if game_ticks % 100 == 0 {
+        //     println!("player_xyz: {}, {}, {}", player_x, player_y, player_z);
+        //     println!("Player transform matrix: {:?}", player_transform);
+        // }
 
         // Push the position uniform data
         // command_buffer.push_vertex_uniform_data(0, &position_uniform);
@@ -781,22 +852,24 @@ pub fn main() {
         // Should check if swapchain buffer is actually available, and submit command buffer early if not available?
 
         // Create the color target
-        let color_target_info = ColorTargetInfo::default()
-            .with_clear_color(Color {
-                r: 240u8,
-                g: 250u8,
-                b: 255u8,
-                a: 255u8,
-            })
-            .with_load_op(SDL_GPU_LOADOP_CLEAR)
-            .with_store_op(SDL_GPU_STOREOP_STORE)
-            .with_texture(&swapchain_texture);
+        // let color_target_info =
+        let color_targets = [ColorTargetInfo::default()
+            // .with_clear_color(Color {
+            //     r: 240u8,
+            //     g: 250u8,
+            //     b: 255u8,
+            //     a: 255u8,
+            // })
+            // .with_load_op(SDL_GPU_LOADOP_CLEAR)
+            // .with_store_op(SDL_GPU_STOREOP_STORE)
+            .with_texture(&swapchain_texture)];
 
         // Begin a render pass
         let render_pass = gpu_device
             .begin_render_pass(
                 &command_buffer,
-                &[color_target_info],
+                // &[color_target_info],
+                &color_targets,
                 Some(&depth_stencil_target_info),
             )
             .unwrap();
@@ -814,14 +887,26 @@ pub fn main() {
                 .or(model.document.scenes().next())
                 .unwrap();
 
+            // if game_ticks % 100 == 0 {
+            //     for animation in model.document.animations() {
+            //         for channel in animation.channels() {
+            //             // channel.
+            //         }
+            //         for sample in animation.samplers() {
+            //             // sample.
+            //         }
+            //         // 0 - Jump, 1 - rig NEW, 2 - Roll, 3 - Run, 4 - Slash, 5 - Stab, 6 - Stand
+            //     }
+            // }
+
             let mut remaining_node_transform_pairs = Vec::new();
 
             for node in scene.nodes() {
-                // Start with identity matrix
-                // remaining_node_transform_pairs.push((node, IDENTITY_MATRIX));
+                // Start with identity matrix. The pair is: (current node, current transformation)
+                remaining_node_transform_pairs.push((node, IDENTITY_MATRIX));
 
                 // Start with current player rotation
-                remaining_node_transform_pairs.push((node, player_transform));
+                // remaining_node_transform_pairs.push((node, player_transform));
             }
 
             while !remaining_node_transform_pairs.is_empty() {
@@ -830,17 +915,51 @@ pub fn main() {
                     remaining_node_transform_pairs.pop().unwrap();
 
                 // Calculate transform for this node based on it's inherited transform and it's local transform
-                // Wrong order...?
+                // Wrong order...? (Not sure)
+
                 // let multiplied_transform_matrix =
                 //     multiply_matrices(inherited_transform_matrix, node.transform().matrix());
+
+                // let multiplied_transform_matrix =
+                //     multiply_matrices(node.transform().matrix(), inherited_transform_matrix);
+
+                // Create my own matrix instead of using the one from the library?
+                // (Gltf library says the matrix is translation * rotation * scale)
+                // let (d_translate, d_rotation, d_scale) = node.transform().decomposed();
+                // let alternate_matrix = multiply_matrices_chain(vec![
+                //     matrix_translate_multi(d_translate[0], d_translate[1], d_translate[2]),
+                //     matrix_rotate_from_quaternion(
+                //         d_rotation[0],
+                //         d_rotation[1],
+                //         d_rotation[2],
+                //         d_rotation[3],
+                //     ),
+                //     matrix_scale_multi(d_scale[0], d_scale[1], d_scale[2]),
+                // ]);
+                let flipped_matrix = flip_matrix_diagonally(node.transform().matrix());
+                // They are in fact different, it seems. Not sure exactly why but probably something to do
+                // with "column or row major order"
+
                 let multiplied_transform_matrix =
-                    multiply_matrices(node.transform().matrix(), inherited_transform_matrix);
+                    // multiply_matrices(inherited_transform_matrix, alternate_matrix);
+                    multiply_matrices(inherited_transform_matrix, flipped_matrix);
 
                 if let Some(mesh) = node.mesh() {
+                    // if game_ticks % 100 == 0 {
+                    //     println!("Matrix from gltf library: {:?}", node.transform().matrix());
+                    //     println!("Matrix from remade decomp:: {:?}", alternate_matrix);
+                    // }
                     // Render mesh with transform
 
+                    // Player's Transform Matrix  *  Model's Transform Matrix is correct
+                    let multiplied_and_player_transform_matrix =
+                        multiply_matrices(player_transform, multiplied_transform_matrix);
+                    // multiply_matrices(multiplied_transform_matrix, player_transform);
+
                     // Send transform to shader as a uniform
-                    command_buffer.push_vertex_uniform_data(0, &multiplied_transform_matrix);
+                    command_buffer
+                        .push_vertex_uniform_data(0, &multiplied_and_player_transform_matrix);
+                    // command_buffer.push_vertex_uniform_data(0, &multiplied_transform_matrix);
                     // command_buffer.push_vertex_uniform_data(0, &IDENTITY_MATRIX);
                     // command_buffer.push_vertex_uniform_data(0, &player_transform);
 
@@ -908,6 +1027,22 @@ pub fn main() {
         // End the render pass
         gpu_device.end_render_pass(render_pass);
 
+        // Start another render pass for the gui
+
+        // Display gui with imgui
+        imgui.render(
+            &mut sdl_context,
+            &gpu_device,
+            &window,
+            &event_pump,
+            &mut command_buffer,
+            // &[color_target_info],
+            &color_targets,
+            |ui| {
+                ui.show_demo_window(&mut true);
+            },
+        );
+
         // Submit the command buffer
         command_buffer.submit().unwrap();
 
@@ -929,33 +1064,60 @@ const IDENTITY_MATRIX: [[f32; 4]; 4] = [
     [0.0, 0.0, 0.0, 1.0],
 ];
 
-fn matrix_rotate_around_x(a: f32) -> [[f32; 4]; 4] {
-    // roll
+// fn matrix_rotate_around_x(a: f32) -> [[f32; 4]; 4] {
+//     // roll
+//     [
+//         [1.0, 0.0, 0.0, 0.0],
+//         [0.0, a.cos(), -a.sin(), 0.0],
+//         [0.0, a.sin(), a.cos(), 0.0],
+//         [0.0, 0.0, 0.0, 1.0],
+//     ]
+// }
+//
+// fn matrix_rotate_around_y(a: f32) -> [[f32; 4]; 4] {
+//     // pitch
+//     [
+//         [a.cos(), 0.0, a.sin(), 0.0],
+//         [0.0, 1.0, 0.0, 0.0],
+//         [-a.sin(), 0.0, a.cos(), 0.0],
+//         [0.0, 0.0, 0.0, 1.0],
+//     ]
+// }
+//
+// fn matrix_rotate_around_z(a: f32) -> [[f32; 4]; 4] {
+//     // yaw
+//     [
+//         [a.cos(), -a.sin(), 0.0, 0.0],
+//         [a.sin(), a.cos(), 0.0, 0.0],
+//         [0.0, 0.0, 1.0, 0.0],
+//         [0.0, 0.0, 0.0, 1.0],
+//     ]
+// }
+
+fn matrix_rotate_from_quaternion(x: f32, y: f32, z: f32, s: f32) -> [[f32; 4]; 4] {
     [
-        [1.0, 0.0, 0.0, 0.0],
-        [0.0, a.cos(), -a.sin(), 0.0],
-        [0.0, a.sin(), a.cos(), 0.0],
+        [
+            1.0 - (2.0 * y * y) - (2.0 * z * z),
+            (2.0 * x * y) - (2.0 * s * z),
+            (2.0 * x * z) + (2.0 * s * y),
+            0.0,
+        ],
+        [
+            (2.0 * x * y) + (2.0 * s * z),
+            1.0 - (2.0 * x * x) - (2.0 * z * z),
+            (2.0 * y * z) - (2.0 * s * x),
+            0.0,
+        ],
+        [
+            (2.0 * x * z) - (2.0 * s * y),
+            (2.0 * y * z) + (2.0 * s * x),
+            1.0 - (2.0 * x * x) - (2.0 * y * y),
+            0.0,
+        ],
         [0.0, 0.0, 0.0, 1.0],
     ]
 }
-fn matrix_rotate_around_y(a: f32) -> [[f32; 4]; 4] {
-    // pitch
-    [
-        [a.cos(), 0.0, a.sin(), 0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [-a.sin(), 0.0, a.cos(), 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ]
-}
-fn matrix_rotate_around_z(a: f32) -> [[f32; 4]; 4] {
-    // yaw
-    [
-        [a.cos(), -a.sin(), 0.0, 0.0],
-        [a.sin(), a.cos(), 0.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ]
-}
+
 fn matrix_rotate_multi_axis(x: f32, y: f32, z: f32) -> [[f32; 4]; 4] {
     // x, y, z : yaw, pitch, roll
     // https://en.wikipedia.org/wiki/Rotation_matrix
@@ -975,6 +1137,12 @@ fn matrix_rotate_multi_axis(x: f32, y: f32, z: f32) -> [[f32; 4]; 4] {
         [-y.sin(), y.cos() * z.sin(), y.cos() * z.cos(), 0.0],
         [0.0, 0.0, 0.0, 1.0],
     ]
+}
+
+fn multiply_matrices_chain(matrices: Vec<[[f32; 4]; 4]>) -> [[f32; 4]; 4] {
+    matrices
+        .iter()
+        .fold(IDENTITY_MATRIX, |a, b| multiply_matrices(a, *b))
 }
 
 fn multiply_matrices(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
@@ -1026,6 +1194,15 @@ fn matrix_translate_multi(x: f32, y: f32, z: f32) -> [[f32; 4]; 4] {
         [0.0, 1.0, 0.0, y],
         [0.0, 0.0, 1.0, z],
         [0.0, 0.0, 0.0, 1.0],
+    ]
+}
+
+fn flip_matrix_diagonally(m: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
+    [
+        [m[0][0], m[1][0], m[2][0], m[3][0]],
+        [m[0][1], m[1][1], m[2][1], m[3][1]],
+        [m[0][2], m[1][2], m[2][2], m[3][2]],
+        [m[0][3], m[1][3], m[2][3], m[3][3]],
     ]
 }
 

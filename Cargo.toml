@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-sdl3 = {version = "0.15.1", features = ["build-from-source"]}
-gltf = {version = "1"}
+sdl3 = {version = "0.17.3", features = ["build-from-source"]}
+gltf = {version = "1.4.1"}
+imgui-sdl3 = {version = "0.5.2"}
