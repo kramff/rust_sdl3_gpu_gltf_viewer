@@ -16,7 +16,7 @@ use std::time::Duration;
 
 // The vertex input layout
 #[allow(dead_code)] // Compiler doesn't see that the code is used to pass info to the gpu
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 struct Vertex {
     // vec3 Position
     x: c_float,
@@ -31,11 +31,6 @@ struct Vertex {
     u: c_float,
     v: c_float,
 }
-
-// struct UniformBufferPosition {
-//     x_pos: c_float,
-//     y_pos: c_float,
-// }
 
 struct PrimitiveData {
     vertex_buffer: Buffer,
@@ -84,6 +79,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                             tex_coord_temp_vector.push((tex_coord_u, tex_coord_v));
                         }
                     }
+                    // Currently unused:
                     // reader.read_normals()
                     // reader.read_tangents()
                     // reader.read_joints(set)
@@ -157,21 +153,20 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                         .build()
                         .unwrap();
 
-                    // Fill the transfer buffer
+                    // Fill the transfer buffer with the vertex data
                     let mut buffer_mem_map = transfer_buffer.map(&gpu_device, true);
                     let buffer_mem_map_mem_mut: &mut [Vertex] = buffer_mem_map.mem_mut();
-
                     for (index, &value) in vertices.iter().enumerate() {
                         buffer_mem_map_mem_mut[index] = value;
                     }
                     buffer_mem_map.unmap();
 
-                    // Where is the data
+                    // Set the location of the data (it's at the start of the transfer buffer)
                     let data_location = TransferBufferLocation::default()
                         .with_transfer_buffer(&transfer_buffer)
                         .with_offset(0u32);
 
-                    // Where to upload the data
+                    // Set what region of the buffer to transfer (the size of the vertices data)
                     let buffer_region = BufferRegion::default()
                         .with_buffer(&vertex_buffer)
                         .with_size(primitive_vertices_size)
@@ -179,8 +174,6 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
 
                     // Upload the data
                     copy_pass.upload_to_gpu_buffer(data_location, buffer_region, true);
-
-                    // Index stuff
 
                     // Create the index buffer
                     let index_buffer = gpu_device
@@ -190,30 +183,26 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                         .build()
                         .unwrap();
 
-                    // Fill the transfer buffer
+                    // Fill the transfer buffer with the index data
                     let mut buffer_mem_map = transfer_buffer.map(&gpu_device, true);
-
                     let buffer_mem_map_mem_mut: &mut [u32] = buffer_mem_map.mem_mut();
-
                     for (index, &value) in indices.iter().enumerate() {
                         buffer_mem_map_mem_mut[index] = value;
                     }
-
                     buffer_mem_map.unmap();
 
-                    // Where is the data
+                    // Set the location of the data (it's at the start of the transfer buffer)
                     let data_location = TransferBufferLocation::default()
                         .with_transfer_buffer(&transfer_buffer)
                         .with_offset(0u32);
 
-                    // Where to upload the data
+                    // Set what region of the buffer to transfer (the size of the indices data)
                     let buffer_region = BufferRegion::default()
                         .with_buffer(&index_buffer)
                         .with_size(primitive_indices_size)
                         .with_offset(0u32);
 
                     // Upload the data
-                    // The next line causes the model to not show up...
                     copy_pass.upload_to_gpu_buffer(data_location, buffer_region, true);
 
                     // Release the index transfer buffer
@@ -267,6 +256,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                 .with_address_mode_u(SamplerAddressMode::Repeat)
                 .with_address_mode_v(SamplerAddressMode::Repeat)
                 .with_address_mode_w(SamplerAddressMode::Repeat);
+            // Currently unused sampler options
             // .with_mip_lod_bias(value)
             // .with_max_anisotropy(value)
             // .with_compare_op(value)
@@ -313,6 +303,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                             image.pixels[pixel_coord * 4 + 3],
                         ];
                     }
+                    // Haven't needed to implement the other formats yet. Should be similar to the above?
                     _ => panic!("Image format not supported yet: {:?}", image.format),
                 }
             }
@@ -338,12 +329,14 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
     }
 }
 
+// Make a solid white image and upload it to the gpu so that textures without an image can use this instead
+// (Not sure if that's the right way to handle that?)
 fn create_dummy_image_and_copy_to_gpu<'a>(gpu_device: &Device) -> ImageData<'a> {
     // Start a copy pass
     let copy_command_buffer = gpu_device.acquire_command_buffer().unwrap();
     let copy_pass = gpu_device.begin_copy_pass(&copy_command_buffer).unwrap();
 
-    // how small can it be?
+    // how small can it be? 1x1 seems fine
     let img_size = 1u32;
     let texture_create_info = TextureCreateInfo::new()
         .with_type(TextureType::_2D)
@@ -408,7 +401,7 @@ pub fn main() {
 
     // Create a window
     let window = video_subsystem
-        .window("Rust SDL3 GPU - GLTF Model Viewer", 512, 512)
+        .window("Rust SDL3 GPU - GLTF Model Viewer", 1024, 1024)
         .resizable()
         .position_centered()
         .build()
@@ -425,12 +418,6 @@ pub fn main() {
         // Disable creation of files on disk (Not sure, this is from the example in the repo)
         ctx.set_ini_filename(None);
         ctx.set_log_filename(None);
-
-        // Set up fonts
-        // ctx.fonts()
-        //     .add_font(&[imgui::FontSource::DefaultFontData { config: None }]);
-
-        // (Maybe need to do more things here? Not sure, example says "setup platform and renderer")
     });
 
     // Load the vertex shader code
@@ -517,8 +504,8 @@ pub fn main() {
         .with_type(TextureType::_2D)
         .with_format(TextureFormat::D16Unorm)
         .with_usage(TextureUsage::SAMPLER | TextureUsage::DEPTH_STENCIL_TARGET)
-        .with_width(512)
-        .with_height(512)
+        .with_width(1024)
+        .with_height(1024)
         .with_layer_count_or_depth(1)
         .with_num_levels(1)
         .with_sample_count(SampleCount::NoMultiSampling);
@@ -531,31 +518,21 @@ pub fn main() {
     let depth_stencil_target_info = DepthStencilTargetInfo::new()
         .with_texture(&mut depth_stencil_texture)
         .with_clear_depth(1.0)
-        // .with_clear_depth(0.0)
         .with_load_op(LoadOp::CLEAR)
         .with_store_op(StoreOp::STORE)
         .with_stencil_load_op(LoadOp::CLEAR)
         .with_stencil_store_op(StoreOp::STORE)
         .with_cycle(true)
         .with_clear_stencil(0);
-    // .with_clear_stencil(1);
 
     let depth_stencil_state = DepthStencilState::new()
-        // .with_compare_op(CompareOp::LessOrEqual)
         .with_compare_op(CompareOp::Less)
-        // .with_compare_op(CompareOp::Greater)
-        // .with_back_stencil_state(value)
-        // .with_front_stencil_state(value)
-        // .with_compare_mask(value)
-        // .with_write_mask(value)
         .with_enable_depth_test(true)
         .with_enable_depth_write(true);
-    // .with_enable_stencil_test(value)
 
     // Make the target info
     let target_info = GraphicsPipelineTargetInfo::new()
         .with_color_target_descriptions(&[color_target_description])
-        // .with_has_depth_stencil_target(false);
         .with_has_depth_stencil_target(true)
         .with_depth_stencil_format(TextureFormat::D16Unorm);
 
@@ -614,14 +591,6 @@ pub fn main() {
     // Put a dummy image into the gpu
     let dummy_image = create_dummy_image_and_copy_to_gpu(&gpu_device);
 
-    // Create the position uniform
-    // let mut position_uniform = UniformBufferPosition {
-    //     x_pos: 0.0,
-    //     y_pos: 0.0,
-    // };
-
-    // Create a dummy image to use when no image is needed
-
     // Done with gpu init
 
     // Initialize game variables
@@ -640,27 +609,14 @@ pub fn main() {
     let mut key_r = false;
 
     // Mouse state variables
-    // let mut mouse_left = false;
-    // let mut mouse_middle = false;
-    // let mut mouse_right = false;
-    // let mut mouse_x = 0.0;
-    // let mut mouse_y = 0.0;
     let mut mouse_down = false;
     let mut mouse_drag_x = 0.0;
     let mut mouse_drag_y = 0.0;
-
-    let animation_number = 0;
 
     // Event handling
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
         game_ticks += 1;
-        // if game_ticks % 100 == 0 {
-        //     println!(
-        //         "x: {}, y: {}, z: {}, xr: {}, yr: {}, zr: {}",
-        //         player_x, player_y, player_z, mouse_drag_x, mouse_drag_y, 0
-        //     );
-        // }
         for event in event_pump.poll_iter() {
             imgui.handle_event(&event);
             match event {
@@ -758,8 +714,6 @@ pub fn main() {
                 }
                 // Mouse events
                 Event::MouseMotion { xrel, yrel, .. } => {
-                    // mouse_x = x;
-                    // mouse_y = y;
                     if mouse_down {
                         mouse_drag_x += xrel;
                         mouse_drag_y += yrel;
@@ -837,10 +791,6 @@ pub fn main() {
             matrix_scale_multi(-1.0, 1.0, 1.0),
             matrix_rotate_multi_axis(0.0, (mouse_drag_x) / 64.0, (mouse_drag_y) / 64.0),
         ]);
-        // if game_ticks % 100 == 0 {
-        //     println!("player_xyz: {}, {}, {}", player_x, player_y, player_z);
-        //     println!("Player transform matrix: {:?}", player_transform);
-        // }
 
         // Push the position uniform data
         // command_buffer.push_vertex_uniform_data(0, &position_uniform);
@@ -854,6 +804,17 @@ pub fn main() {
         // Create the color target
         // let color_target_info =
         let color_targets = [ColorTargetInfo::default()
+            .with_clear_color(Color {
+                r: 240u8,
+                g: 250u8,
+                b: 255u8,
+                a: 255u8,
+            })
+            .with_load_op(SDL_GPU_LOADOP_CLEAR)
+            .with_store_op(SDL_GPU_STOREOP_STORE)
+            .with_texture(&swapchain_texture)];
+
+        let color_targets_ui = [ColorTargetInfo::default()
             // .with_clear_color(Color {
             //     r: 240u8,
             //     g: 250u8,
@@ -861,7 +822,7 @@ pub fn main() {
             //     a: 255u8,
             // })
             // .with_load_op(SDL_GPU_LOADOP_CLEAR)
-            // .with_store_op(SDL_GPU_STOREOP_STORE)
+            .with_store_op(SDL_GPU_STOREOP_STORE)
             .with_texture(&swapchain_texture)];
 
         // Begin a render pass
@@ -945,10 +906,6 @@ pub fn main() {
                     multiply_matrices(inherited_transform_matrix, flipped_matrix);
 
                 if let Some(mesh) = node.mesh() {
-                    // if game_ticks % 100 == 0 {
-                    //     println!("Matrix from gltf library: {:?}", node.transform().matrix());
-                    //     println!("Matrix from remade decomp:: {:?}", alternate_matrix);
-                    // }
                     // Render mesh with transform
 
                     // Player's Transform Matrix  *  Model's Transform Matrix is correct
@@ -1037,9 +994,22 @@ pub fn main() {
             &event_pump,
             &mut command_buffer,
             // &[color_target_info],
-            &color_targets,
+            &color_targets_ui,
             |ui| {
-                ui.show_demo_window(&mut true);
+                ui.text(format!("Player x: {}", player_x));
+                ui.text(format!("Player y: {}", player_y));
+                ui.text(format!("Player z: {}", player_z));
+                ui.text(format!("Rotate x: {}", mouse_drag_x));
+                ui.text(format!("Rotate y: {}", mouse_drag_y));
+                ui.text(format!("Frames: {}", game_ticks));
+                let button_clicked = ui.button("Reset camera");
+                if button_clicked {
+                    player_x = 0.0;
+                    player_y = 0.0;
+                    player_z = 0.0;
+                    mouse_drag_x = 0.0;
+                    mouse_drag_y = 0.0;
+                }
             },
         );
 
@@ -1051,7 +1021,7 @@ pub fn main() {
     }
     println!("Exited loop");
 
-    // Release buffers and pipeline, destroy gpu device and window here
+    // Release buffers and pipeline, destroy gpu device and window here (?)
     // drop(pipeline);
     // drop(window);
     // drop(gpu_device);
@@ -1094,29 +1064,29 @@ const IDENTITY_MATRIX: [[f32; 4]; 4] = [
 //     ]
 // }
 
-fn matrix_rotate_from_quaternion(x: f32, y: f32, z: f32, s: f32) -> [[f32; 4]; 4] {
-    [
-        [
-            1.0 - (2.0 * y * y) - (2.0 * z * z),
-            (2.0 * x * y) - (2.0 * s * z),
-            (2.0 * x * z) + (2.0 * s * y),
-            0.0,
-        ],
-        [
-            (2.0 * x * y) + (2.0 * s * z),
-            1.0 - (2.0 * x * x) - (2.0 * z * z),
-            (2.0 * y * z) - (2.0 * s * x),
-            0.0,
-        ],
-        [
-            (2.0 * x * z) - (2.0 * s * y),
-            (2.0 * y * z) + (2.0 * s * x),
-            1.0 - (2.0 * x * x) - (2.0 * y * y),
-            0.0,
-        ],
-        [0.0, 0.0, 0.0, 1.0],
-    ]
-}
+// fn matrix_rotate_from_quaternion(x: f32, y: f32, z: f32, s: f32) -> [[f32; 4]; 4] {
+//     [
+//         [
+//             1.0 - (2.0 * y * y) - (2.0 * z * z),
+//             (2.0 * x * y) - (2.0 * s * z),
+//             (2.0 * x * z) + (2.0 * s * y),
+//             0.0,
+//         ],
+//         [
+//             (2.0 * x * y) + (2.0 * s * z),
+//             1.0 - (2.0 * x * x) - (2.0 * z * z),
+//             (2.0 * y * z) - (2.0 * s * x),
+//             0.0,
+//         ],
+//         [
+//             (2.0 * x * z) - (2.0 * s * y),
+//             (2.0 * y * z) + (2.0 * s * x),
+//             1.0 - (2.0 * x * x) - (2.0 * y * y),
+//             0.0,
+//         ],
+//         [0.0, 0.0, 0.0, 1.0],
+//     ]
+// }
 
 fn matrix_rotate_multi_axis(x: f32, y: f32, z: f32) -> [[f32; 4]; 4] {
     // x, y, z : yaw, pitch, roll

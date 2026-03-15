@@ -17,6 +17,8 @@ layout (location = 0) out vec4 FragColor;
 // }; 
 layout (set = 2, binding = 0) uniform sampler2D texture_sampler;
 
+// layout (set = 2, binding = 0) uniform sampler2D second_sampler;
+
 void main()
 {
     // TODO - figure out texture
