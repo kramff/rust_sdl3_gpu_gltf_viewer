@@ -4,6 +4,9 @@
 extern crate sdl3;
 
 use gltf::Document;
+use gltf::animation::Interpolation;
+use gltf::animation::Property;
+use gltf::animation::util::ReadOutputs;
 use imgui_sdl3::ImGuiSdl3;
 use sdl3::event::Event;
 use sdl3::gpu::*;
@@ -47,21 +50,34 @@ struct ImageData<'a> {
     sampler: Sampler,
 }
 
+struct AnimationData<'a> {
+    channels: Vec<AnimationChannelData<'a>>,
+}
+
+struct AnimationChannelData<'a> {
+    target_property: Property,
+    target_node_index: usize,
+    interpolation: Interpolation,
+    inputs: Vec<f32>,
+    outputs: ReadOutputs<'a>,
+}
+
 struct ModelData<'a> {
     meshes: Vec<MeshData>,
     images: Vec<ImageData<'a>>,
     document: Document,
+    animations: Vec<AnimationData<'a>>,
 }
 
 fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> ModelData<'a> {
     // Load the model with the gltf crate's import function
-    let (model_gltf, buffers, images) = gltf::import(model_path).unwrap();
+    let (document, buffers, images) = gltf::import(model_path).unwrap();
 
     // Start a copy pass
     let copy_command_buffer = gpu_device.acquire_command_buffer().unwrap();
     let copy_pass = gpu_device.begin_copy_pass(&copy_command_buffer).unwrap();
 
-    let meshes_vec = model_gltf
+    let meshes_vec = document
         .meshes()
         .map(|mesh| -> MeshData {
             let primitives_vec = mesh
@@ -317,6 +333,47 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
         })
         .collect();
 
+    // Get animation data
+    let animations_vec = document
+        .animations()
+        .map(move |animation| -> AnimationData {
+            // Get info about each channel in the animation
+            let channels_vec = animation
+                .channels()
+                .map(|channel| -> AnimationChannelData {
+                    // Create the reader
+                    let animation_sampler_reader =
+                        channel.reader(|buffer| Some(&buffers[buffer.index()]));
+
+                    // Get the input data
+                    let animation_inputs =
+                        animation_sampler_reader.read_inputs().unwrap().collect();
+
+                    // Get the output data
+                    let animation_outputs = animation_sampler_reader.read_outputs().unwrap();
+
+                    // In progress here... TODO ***
+                    // I believe what is needed is to take the data out of the inputs and outputs
+                    // and put them into vectors or something so that:
+                    // - the compiler is satisfied that the 'buffers' variable isn't escaping the closure
+                    // - the data is prepared to be used later on during rendering easily
+                    AnimationChannelData {
+                        target_property: channel.target().property(),
+                        target_node_index: channel.target().node().index(),
+                        interpolation: channel.sampler().interpolation(),
+                        inputs: Vec::new(),
+                        // inputs: animation_inputs,
+                        // outputs: animation_outputs,
+                        outputs: Some(None).unwrap().unwrap(),
+                    }
+                })
+                .collect();
+            AnimationData {
+                channels: channels_vec,
+            }
+        })
+        .collect();
+
     // End the copy pass
     gpu_device.end_copy_pass(copy_pass);
     copy_command_buffer.submit().unwrap();
@@ -325,7 +382,8 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
     ModelData {
         meshes: meshes_vec,
         images: images_vec,
-        document: model_gltf,
+        document,
+        animations: animations_vec,
     }
 }
 
@@ -556,10 +614,10 @@ pub fn main() {
 
     // Load a model...
 
-    loaded_models.push(load_model_and_copy_to_gpu(
-        "models/Low-Poly-Base_copy.glb",
-        &gpu_device,
-    ));
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/Low-Poly-Base_copy.glb",
+    //     &gpu_device,
+    // ));
 
     // loaded_models.push(load_model_and_copy_to_gpu(
     //     "models/Avocado.glb",
@@ -570,6 +628,11 @@ pub fn main() {
     //     "models/MinimalTriangle.gltf",
     //     &gpu_device,
     // ));
+
+    loaded_models.push(load_model_and_copy_to_gpu(
+        "models/AnimatedTriangle.gltf",
+        &gpu_device,
+    ));
 
     // loaded_models.push(load_model_and_copy_to_gpu("models/ABeautifulGame.glb", &gpu_device));
 
@@ -848,16 +911,27 @@ pub fn main() {
                 .or(model.document.scenes().next())
                 .unwrap();
 
-            // if game_ticks % 100 == 0 {
-            //     for animation in model.document.animations() {
-            //         for channel in animation.channels() {
-            //             // channel.
+            // for animation in model.document.animations() {
+            //     for channel in animation.channels() {
+            //         // channel.target().node()
+            //         match channel.target().property() {
+            //             Property::Translation => (),
+            //             Property::Rotation => (),
+            //             Property::Scale => (),
+            //             Property::MorphTargetWeights => (),
             //         }
-            //         for sample in animation.samplers() {
-            //             // sample.
+            //         // let node_to_animate = channel.target().node();
+            //         // let input_sparse = channel.sampler().input().sparse();
+            //         // let output_sparse = channel.sampler().output().sparse();
+            //         // let interpolation = channel.sampler().interpolation()
+            //         match channel.sampler().interpolation() {
+            //             Interpolation::Linear => (),
+            //             Interpolation::CubicSpline => (),
+            //             Interpolation::Step => (),
             //         }
-            //         // 0 - Jump, 1 - rig NEW, 2 - Roll, 3 - Run, 4 - Slash, 5 - Stab, 6 - Stand
             //     }
+            //     // For my player model, the animations are:
+            //     // 0 - Jump, 1 - rig NEW, 2 - Roll, 3 - Run, 4 - Slash, 5 - Stab, 6 - Stand
             // }
 
             let mut remaining_node_transform_pairs = Vec::new();
