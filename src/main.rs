@@ -14,6 +14,7 @@ use sdl3::keyboard::Keycode;
 use sdl3::libc::c_float;
 use sdl3::mouse::MouseButton;
 use sdl3::pixels::Color;
+use sdl3::sys::dialog::SDL_ShowFileDialogWithProperties;
 use sdl3::sys::gpu::*;
 use std::time::Duration;
 
@@ -50,23 +51,33 @@ struct ImageData<'a> {
     sampler: Sampler,
 }
 
-struct AnimationData<'a> {
-    channels: Vec<AnimationChannelData<'a>>,
+#[derive(Debug)]
+struct AnimationData {
+    channels: Vec<AnimationChannelData>,
 }
 
-struct AnimationChannelData<'a> {
+#[derive(Debug)]
+enum AnimationOutput {
+    Translation([f32; 3]),
+    Rotation([f32; 4]),
+    Scale([f32; 3]),
+    MorphTargetWeight(f32),
+}
+
+#[derive(Debug)]
+struct AnimationChannelData {
     target_property: Property,
     target_node_index: usize,
     interpolation: Interpolation,
     inputs: Vec<f32>,
-    outputs: ReadOutputs<'a>,
+    outputs: Vec<AnimationOutput>,
 }
 
 struct ModelData<'a> {
     meshes: Vec<MeshData>,
     images: Vec<ImageData<'a>>,
     document: Document,
-    animations: Vec<AnimationData<'a>>,
+    animations: Vec<AnimationData>,
 }
 
 fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> ModelData<'a> {
@@ -350,8 +361,29 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                         animation_sampler_reader.read_inputs().unwrap().collect();
 
                     // Get the output data
-                    let animation_outputs = animation_sampler_reader.read_outputs().unwrap();
-
+                    let animation_outputs: Vec<AnimationOutput> =
+                        match animation_sampler_reader.read_outputs().unwrap() {
+                            ReadOutputs::Translations(translations) => translations
+                                .map(|translation| -> AnimationOutput {
+                                    AnimationOutput::Translation(translation)
+                                })
+                                .collect(),
+                            ReadOutputs::Rotations(rotations) => rotations
+                                .into_f32()
+                                .map(|rotation| -> AnimationOutput {
+                                    AnimationOutput::Rotation(rotation)
+                                })
+                                .collect(),
+                            ReadOutputs::Scales(scales) => scales
+                                .map(|scale| -> AnimationOutput { AnimationOutput::Scale(scale) })
+                                .collect(),
+                            ReadOutputs::MorphTargetWeights(weights) => weights
+                                .into_f32()
+                                .map(|weight| -> AnimationOutput {
+                                    AnimationOutput::MorphTargetWeight(weight)
+                                })
+                                .collect(),
+                        };
                     // In progress here... TODO ***
                     // I believe what is needed is to take the data out of the inputs and outputs
                     // and put them into vectors or something so that:
@@ -361,10 +393,9 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                         target_property: channel.target().property(),
                         target_node_index: channel.target().node().index(),
                         interpolation: channel.sampler().interpolation(),
-                        inputs: Vec::new(),
-                        // inputs: animation_inputs,
-                        // outputs: animation_outputs,
-                        outputs: Some(None).unwrap().unwrap(),
+                        inputs: animation_inputs,
+                        outputs: animation_outputs,
+                        // outputs: Vec::new(),
                     }
                 })
                 .collect();
@@ -373,6 +404,8 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
             }
         })
         .collect();
+
+    println!("{:?}", animations_vec);
 
     // End the copy pass
     gpu_device.end_copy_pass(copy_pass);
