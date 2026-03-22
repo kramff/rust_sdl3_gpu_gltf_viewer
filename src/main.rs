@@ -14,8 +14,8 @@ use sdl3::keyboard::Keycode;
 use sdl3::libc::c_float;
 use sdl3::mouse::MouseButton;
 use sdl3::pixels::Color;
-use sdl3::sys::dialog::SDL_ShowFileDialogWithProperties;
 use sdl3::sys::gpu::*;
+use sdl3::sys::metadata::gpu::METADATA_SDL_PROP_GPU_DEVICE_CREATE_FEATURE_DEPTH_CLAMPING_BOOLEAN;
 use std::time::Duration;
 
 // The vertex input layout
@@ -51,12 +51,11 @@ struct ImageData<'a> {
     sampler: Sampler,
 }
 
-#[derive(Debug)]
 struct AnimationData {
     channels: Vec<AnimationChannelData>,
+    animation_index: usize,
 }
 
-#[derive(Debug)]
 enum AnimationOutput {
     Translation([f32; 3]),
     Rotation([f32; 4]),
@@ -64,13 +63,13 @@ enum AnimationOutput {
     MorphTargetWeight(f32),
 }
 
-#[derive(Debug)]
 struct AnimationChannelData {
-    target_property: Property,
+    // target_property: Property,
     target_node_index: usize,
     interpolation: Interpolation,
     inputs: Vec<f32>,
     outputs: Vec<AnimationOutput>,
+    channel_index: usize,
 }
 
 struct ModelData<'a> {
@@ -384,28 +383,22 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                 })
                                 .collect(),
                         };
-                    // In progress here... TODO ***
-                    // I believe what is needed is to take the data out of the inputs and outputs
-                    // and put them into vectors or something so that:
-                    // - the compiler is satisfied that the 'buffers' variable isn't escaping the closure
-                    // - the data is prepared to be used later on during rendering easily
                     AnimationChannelData {
-                        target_property: channel.target().property(),
+                        // target_property: channel.target().property(),
                         target_node_index: channel.target().node().index(),
                         interpolation: channel.sampler().interpolation(),
                         inputs: animation_inputs,
                         outputs: animation_outputs,
-                        // outputs: Vec::new(),
+                        channel_index: channel.index(),
                     }
                 })
                 .collect();
             AnimationData {
                 channels: channels_vec,
+                animation_index: animation.index(),
             }
         })
         .collect();
-
-    println!("{:?}", animations_vec);
 
     // End the copy pass
     gpu_device.end_copy_pass(copy_pass);
@@ -666,6 +659,10 @@ pub fn main() {
         "models/AnimatedTriangle.gltf",
         &gpu_device,
     ));
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/cube_anim_test2.glb",
+    //     &gpu_device,
+    // ));
 
     // loaded_models.push(load_model_and_copy_to_gpu("models/ABeautifulGame.glb", &gpu_device));
 
@@ -713,6 +710,7 @@ pub fn main() {
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
         game_ticks += 1;
+        let game_seconds = (game_ticks as f32) / 60.0;
         for event in event_pump.poll_iter() {
             imgui.handle_event(&event);
             match event {
@@ -944,29 +942,6 @@ pub fn main() {
                 .or(model.document.scenes().next())
                 .unwrap();
 
-            // for animation in model.document.animations() {
-            //     for channel in animation.channels() {
-            //         // channel.target().node()
-            //         match channel.target().property() {
-            //             Property::Translation => (),
-            //             Property::Rotation => (),
-            //             Property::Scale => (),
-            //             Property::MorphTargetWeights => (),
-            //         }
-            //         // let node_to_animate = channel.target().node();
-            //         // let input_sparse = channel.sampler().input().sparse();
-            //         // let output_sparse = channel.sampler().output().sparse();
-            //         // let interpolation = channel.sampler().interpolation()
-            //         match channel.sampler().interpolation() {
-            //             Interpolation::Linear => (),
-            //             Interpolation::CubicSpline => (),
-            //             Interpolation::Step => (),
-            //         }
-            //     }
-            //     // For my player model, the animations are:
-            //     // 0 - Jump, 1 - rig NEW, 2 - Roll, 3 - Run, 4 - Slash, 5 - Stab, 6 - Stand
-            // }
-
             let mut remaining_node_transform_pairs = Vec::new();
 
             for node in scene.nodes() {
@@ -1008,9 +983,79 @@ pub fn main() {
                 // They are in fact different, it seems. Not sure exactly why but probably something to do
                 // with "column or row major order"
 
-                let multiplied_transform_matrix =
+                let multiplied_transform_matrix_pre_animation =
                     // multiply_matrices(inherited_transform_matrix, alternate_matrix);
                     multiply_matrices(inherited_transform_matrix, flipped_matrix);
+
+                let animation_transform_matrix = {
+                    // TODO could probably do some fancy vector reduce trick but for now it just has a mutable variable that all relevant animations apply to
+                    // TODO Not sure if this is the correct, approach, might need to get the translate, rotate, scale components out and multiply them in a specific order?
+                    let mut animation_full_matrix = IDENTITY_MATRIX;
+                    // TODO Should somehow cache which animations -> channels go with which nodes instead of searching here, but for now it's fine
+                    for animation in &model.animations {
+                        // Look up original animation for reference
+                        let animation_ref = model
+                            .document
+                            .animations()
+                            .skip(animation.animation_index)
+                            .next()
+                            .unwrap();
+                        // TODO - should check if the animation is active, otherwise all animations will be playing constantly
+                        for channel in &animation.channels {
+                            if channel.target_node_index == node.index() {
+                                // Look up original channel for reference
+                                let channel_ref = animation_ref
+                                    .channels()
+                                    .skip(channel.channel_index)
+                                    .next()
+                                    .unwrap();
+                                // This is a channel that matches the current node in the model, so apply the animation's transforms to the animation_matrix
+
+                                // Based on the current time and the input (time) data , figure out the output value
+                                // channel.inputs
+
+                                // TODO very dumb approach that will just iterate through the output values 1 tick at a time, should actually use time and math and the interpolation
+                                game_seconds;
+                                let output_index: usize =
+                                    (game_ticks as usize) % channel.outputs.len();
+                                let output_value = channel.outputs.get(output_index).unwrap();
+                                let animation_piece_matrix = match output_value {
+                                    AnimationOutput::Translation(translation) => {
+                                        matrix_translate_multi(
+                                            translation[0],
+                                            translation[1],
+                                            translation[2],
+                                        )
+                                    }
+                                    &AnimationOutput::Rotation(rotation) => {
+                                        matrix_rotate_from_quaternion(
+                                            rotation[0],
+                                            rotation[1],
+                                            rotation[2],
+                                            rotation[3],
+                                        )
+                                    }
+                                    &AnimationOutput::Scale(scale) => {
+                                        matrix_scale_multi(scale[0], scale[1], scale[2])
+                                    }
+                                    &AnimationOutput::MorphTargetWeight(_weight) => IDENTITY_MATRIX,
+                                };
+                                // TODO not sure if correct multiplication order
+                                animation_full_matrix = multiply_matrices(
+                                    animation_full_matrix,
+                                    animation_piece_matrix,
+                                );
+                            }
+                        }
+                    }
+                    animation_full_matrix
+                };
+
+                // TODO - check if this is the right order, I don't have a good intuition about which matrix should come first
+                let multiplied_transform_matrix = multiply_matrices(
+                    multiplied_transform_matrix_pre_animation,
+                    animation_transform_matrix,
+                );
 
                 if let Some(mesh) = node.mesh() {
                     // Render mesh with transform
@@ -1171,29 +1216,29 @@ const IDENTITY_MATRIX: [[f32; 4]; 4] = [
 //     ]
 // }
 
-// fn matrix_rotate_from_quaternion(x: f32, y: f32, z: f32, s: f32) -> [[f32; 4]; 4] {
-//     [
-//         [
-//             1.0 - (2.0 * y * y) - (2.0 * z * z),
-//             (2.0 * x * y) - (2.0 * s * z),
-//             (2.0 * x * z) + (2.0 * s * y),
-//             0.0,
-//         ],
-//         [
-//             (2.0 * x * y) + (2.0 * s * z),
-//             1.0 - (2.0 * x * x) - (2.0 * z * z),
-//             (2.0 * y * z) - (2.0 * s * x),
-//             0.0,
-//         ],
-//         [
-//             (2.0 * x * z) - (2.0 * s * y),
-//             (2.0 * y * z) + (2.0 * s * x),
-//             1.0 - (2.0 * x * x) - (2.0 * y * y),
-//             0.0,
-//         ],
-//         [0.0, 0.0, 0.0, 1.0],
-//     ]
-// }
+fn matrix_rotate_from_quaternion(x: f32, y: f32, z: f32, s: f32) -> [[f32; 4]; 4] {
+    [
+        [
+            1.0 - (2.0 * y * y) - (2.0 * z * z),
+            (2.0 * x * y) - (2.0 * s * z),
+            (2.0 * x * z) + (2.0 * s * y),
+            0.0,
+        ],
+        [
+            (2.0 * x * y) + (2.0 * s * z),
+            1.0 - (2.0 * x * x) - (2.0 * z * z),
+            (2.0 * y * z) - (2.0 * s * x),
+            0.0,
+        ],
+        [
+            (2.0 * x * z) - (2.0 * s * y),
+            (2.0 * y * z) + (2.0 * s * x),
+            1.0 - (2.0 * x * x) - (2.0 * y * y),
+            0.0,
+        ],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+}
 
 fn matrix_rotate_multi_axis(x: f32, y: f32, z: f32) -> [[f32; 4]; 4] {
     // x, y, z : yaw, pitch, roll
