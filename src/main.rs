@@ -5,7 +5,6 @@ extern crate sdl3;
 
 use gltf::Document;
 use gltf::animation::Interpolation;
-use gltf::animation::Property;
 use gltf::animation::util::ReadOutputs;
 use imgui_sdl3::ImGuiSdl3;
 use sdl3::event::Event;
@@ -15,7 +14,6 @@ use sdl3::libc::c_float;
 use sdl3::mouse::MouseButton;
 use sdl3::pixels::Color;
 use sdl3::sys::gpu::*;
-use sdl3::sys::metadata::gpu::METADATA_SDL_PROP_GPU_DEVICE_CREATE_FEATURE_DEPTH_CLAMPING_BOOLEAN;
 use std::time::Duration;
 
 // The vertex input layout
@@ -1015,35 +1013,183 @@ pub fn main() {
                                 // channel.inputs
 
                                 // TODO very dumb approach that will just iterate through the output values 1 tick at a time, should actually use time and math and the interpolation
-                                game_seconds;
-                                let output_index: usize =
-                                    (game_ticks as usize) % channel.outputs.len();
-                                let output_value = channel.outputs.get(output_index).unwrap();
-                                let animation_piece_matrix = match output_value {
-                                    AnimationOutput::Translation(translation) => {
-                                        matrix_translate_multi(
-                                            translation[0],
-                                            translation[1],
-                                            translation[2],
-                                        )
+                                // let current_time = game_seconds; // % channel_ref.sampler().input().max().unwrap();
+                                let current_time = game_seconds
+                                    % channel.inputs.iter().max_by(|a, b| a.total_cmp(b)).unwrap();
+
+                                // TODO so far this is only linear interpolation, also needs to support "step" and "cubic spline" interpolations
+
+                                // https://github.khronos.org/glTF-Tutorials/gltfTutorial/gltfTutorial_007_Animations.html#animation-samplers
+                                // Previous time: Largest time value from inputs that is smaller than current_time
+                                let (previous_index, previous_time) = channel
+                                    .inputs
+                                    .iter()
+                                    .enumerate()
+                                    .filter(|(_, time)| time <= &&current_time)
+                                    .max_by(|(_, a), (_, b)| a.total_cmp(b))
+                                    .unwrap_or_else(|| {
+                                        // println!("current_time is: {}", current_time);
+                                        (0, &0.0f32)
+                                    });
+
+                                // Next time: Smallest time value from inputs that is greater than current_time
+                                let (next_index, next_time) = channel
+                                    .inputs
+                                    .iter()
+                                    .enumerate()
+                                    .filter(|(_, time)| time > &&current_time)
+                                    .min_by(|(_, a), (_, b)| a.total_cmp(b))
+                                    .unwrap_or_else(|| {
+                                        // println!("hi 2");
+                                        (0, &0.0f32)
+                                    });
+
+                                let previous_transform =
+                                    channel.outputs.get(previous_index).unwrap();
+                                let next_transform = channel.outputs.get(next_index).unwrap();
+                                let interpolation_value =
+                                    (current_time - previous_time) / (next_time - previous_time);
+                                // let interpolated_transform = previous_transform + interpolation_value * (next_transform - previous_transform);
+                                let interpolated_transform = match (
+                                    previous_transform,
+                                    next_transform,
+                                ) {
+                                    (
+                                        &AnimationOutput::Translation(previous_translation),
+                                        &AnimationOutput::Translation(next_translation),
+                                    ) => matrix_translate_multi(
+                                        previous_translation[0]
+                                            + interpolation_value
+                                                * (next_translation[0] - previous_translation[0]),
+                                        previous_translation[1]
+                                            + interpolation_value
+                                                * (next_translation[1] - previous_translation[1]),
+                                        previous_translation[2]
+                                            + interpolation_value
+                                                * (next_translation[2] - previous_translation[2]),
+                                    ),
+                                    (
+                                        &AnimationOutput::Rotation(previous_rotation),
+                                        &AnimationOutput::Rotation(
+                                            next_rotation_before_negative_check,
+                                        ),
+                                    ) => {
+                                        // https://github.khronos.org/glTF-Tutorials/gltfTutorial/gltfTutorial_007_Animations.html#linear
+                                        let dot_product_before_negative_check =
+                                            quaternion_dot_product(
+                                                previous_rotation,
+                                                next_rotation_before_negative_check,
+                                            );
+                                        // If dot product is negative, "take the shortest path" / "go the other way around the sphere" by multiplying the dot product and the next rotation by -1
+                                        let (next_rotation, dot_product) =
+                                            if dot_product_before_negative_check < 0.0 {
+                                                (
+                                                    [
+                                                        next_rotation_before_negative_check[0]
+                                                            * -1.0,
+                                                        next_rotation_before_negative_check[1]
+                                                            * -1.0,
+                                                        next_rotation_before_negative_check[2]
+                                                            * -1.0,
+                                                        next_rotation_before_negative_check[3]
+                                                            * -1.0,
+                                                    ],
+                                                    dot_product_before_negative_check * -1.0,
+                                                )
+                                            } else {
+                                                (
+                                                    next_rotation_before_negative_check,
+                                                    dot_product_before_negative_check,
+                                                )
+                                            };
+                                        // If the previous and next quaternions are very close, just linear interpolate between them
+                                        if dot_product > 0.9995 {
+                                            matrix_rotate_from_quaternion(
+                                                previous_rotation[0]
+                                                    + interpolation_value
+                                                        * (next_rotation[0] - previous_rotation[0]),
+                                                previous_rotation[1]
+                                                    + interpolation_value
+                                                        * (next_rotation[1] - previous_rotation[1]),
+                                                previous_rotation[2]
+                                                    + interpolation_value
+                                                        * (next_rotation[2] - previous_rotation[2]),
+                                                previous_rotation[3]
+                                                    + interpolation_value
+                                                        * (next_rotation[3] - previous_rotation[3]),
+                                            )
+                                        } else {
+                                            // Otherwise, calculate the spherical linear interpolation
+                                            let theta_0 = dot_product.acos();
+                                            let theta = interpolation_value * theta_0;
+                                            let sin_theta = theta.sin();
+                                            let sin_theta_0 = theta_0.sin();
+                                            let scale_previous_quaternion =
+                                                theta.cos() - dot_product * sin_theta / sin_theta_0;
+                                            let scale_next_quaternion = sin_theta / sin_theta_0;
+                                            matrix_rotate_from_quaternion(
+                                                scale_previous_quaternion * previous_rotation[0]
+                                                    + scale_next_quaternion * next_rotation[0],
+                                                scale_previous_quaternion * previous_rotation[1]
+                                                    + scale_next_quaternion * next_rotation[1],
+                                                scale_previous_quaternion * previous_rotation[2]
+                                                    + scale_next_quaternion * next_rotation[2],
+                                                scale_previous_quaternion * previous_rotation[3]
+                                                    + scale_next_quaternion * next_rotation[3],
+                                            )
+                                        }
                                     }
-                                    &AnimationOutput::Rotation(rotation) => {
-                                        matrix_rotate_from_quaternion(
-                                            rotation[0],
-                                            rotation[1],
-                                            rotation[2],
-                                            rotation[3],
-                                        )
-                                    }
-                                    &AnimationOutput::Scale(scale) => {
-                                        matrix_scale_multi(scale[0], scale[1], scale[2])
-                                    }
-                                    &AnimationOutput::MorphTargetWeight(_weight) => IDENTITY_MATRIX,
+                                    (
+                                        &AnimationOutput::Scale(previous_scale),
+                                        &AnimationOutput::Scale(next_scale),
+                                    ) => matrix_scale_multi(
+                                        previous_scale[0]
+                                            + interpolation_value
+                                                * (next_scale[0] - previous_scale[0]),
+                                        previous_scale[1]
+                                            + interpolation_value
+                                                * (next_scale[1] - previous_scale[1]),
+                                        previous_scale[2]
+                                            + interpolation_value
+                                                * (next_scale[2] - previous_scale[2]),
+                                    ),
+                                    (
+                                        &AnimationOutput::MorphTargetWeight(previous_weight),
+                                        &AnimationOutput::MorphTargetWeight(next_weight),
+                                    ) => IDENTITY_MATRIX,
+                                    _ => panic!(
+                                        "should always have the same animation type for previous and next"
+                                    ),
                                 };
+
+                                // let output_index: usize =
+                                //     (game_ticks as usize) % channel.outputs.len();
+                                // let output_value = channel.outputs.get(output_index).unwrap();
+                                // let animation_piece_matrix = match output_value {
+                                //     AnimationOutput::Translation(translation) => {
+                                //         matrix_translate_multi(
+                                //             translation[0],
+                                //             translation[1],
+                                //             translation[2],
+                                //         )
+                                //     }
+                                //     &AnimationOutput::Rotation(rotation) => {
+                                //         matrix_rotate_from_quaternion(
+                                //             rotation[0],
+                                //             rotation[1],
+                                //             rotation[2],
+                                //             rotation[3],
+                                //         )
+                                //     }
+                                //     &AnimationOutput::Scale(scale) => {
+                                //         matrix_scale_multi(scale[0], scale[1], scale[2])
+                                //     }
+                                //     &AnimationOutput::MorphTargetWeight(_weight) => IDENTITY_MATRIX,
+                                // };
                                 // TODO not sure if correct multiplication order
                                 animation_full_matrix = multiply_matrices(
                                     animation_full_matrix,
-                                    animation_piece_matrix,
+                                    interpolated_transform,
                                 );
                             }
                         }
@@ -1326,6 +1472,10 @@ fn flip_matrix_diagonally(m: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
         [m[0][2], m[1][2], m[2][2], m[3][2]],
         [m[0][3], m[1][3], m[2][3], m[3][3]],
     ]
+}
+
+fn quaternion_dot_product(a: [f32; 4], b: [f32; 4]) -> f32 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]
 }
 
 #[cfg(test)]
