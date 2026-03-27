@@ -679,6 +679,16 @@ pub fn main() {
     //     &gpu_device,
     // ));
 
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/MorphTargetExample.glb",
+    //     &gpu_device,
+    // ));
+
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/VertexSkinExample.glb",
+    //     &gpu_device,
+    // ));
+
     // Put a dummy image into the gpu
     let dummy_image = create_dummy_image_and_copy_to_gpu(&gpu_device);
 
