@@ -38,6 +38,8 @@ struct PrimitiveData {
     vertex_buffer: Buffer,
     index_buffer: Buffer,
     index_count: u32,
+    morph_target_buffer: Option<Buffer>,
+    morph_target_count: u32,
 }
 
 struct MeshData {
@@ -108,7 +110,20 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     // reader.read_tangents()
                     // reader.read_joints(set)
                     // reader.read_weights(set)
-                    // reader.read_morph_targets()
+
+                    let mut morph_positions_temp_vector = Vec::new();
+                    let mut morph_positions_count: u32 = 0;
+                    for morph_target in reader.read_morph_targets() {
+                        // morph_target is (positions, normals, tangents) but each is optional
+                        if let (Some(morph_positions), _, _) = morph_target {
+                            // Only looking at positions for now
+                            morph_positions_count += 1;
+                            for morph_position in morph_positions {
+                                morph_positions_temp_vector.push(morph_position);
+                            }
+                        }
+                    }
+                    // TODO:
 
                     // Get vertex colors
                     let mut colors_temp_vector = Vec::new();
@@ -158,10 +173,16 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     // How big is the index data to transfer
                     let primitive_indices_size = (indices.len() * size_of::<u32>()) as u32;
 
-                    // Determine which is larger
-                    let larger_size = primitive_vertices_size.max(primitive_indices_size);
+                    // How big is the morph target data to transfer
+                    let primitive_morph_target_size =
+                        morph_positions_count * primitive_vertices_size;
 
-                    // Create the transfer buffer, the vertices and the indices will both use this to upload to the gpu
+                    // Determine which is larger
+                    let larger_size = primitive_vertices_size
+                        .max(primitive_indices_size)
+                        .max(primitive_morph_target_size);
+
+                    // Create the transfer buffer, the vertices and the indices (and optionally the morph target) will both use this to upload to the gpu
                     let transfer_buffer = gpu_device
                         .create_transfer_buffer()
                         .with_size(larger_size)
@@ -229,6 +250,43 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     // Upload the data
                     copy_pass.upload_to_gpu_buffer(data_location, buffer_region, true);
 
+                    // Optionally Create the morph target buffer if there is 1 or more morph targets for the primitive
+                    let morph_target_buffer: Option<Buffer> = if morph_positions_count > 0 {
+                        let morph_target_buffer = gpu_device
+                            .create_buffer()
+                            .with_size(primitive_indices_size)
+                            // Not sure on the buffer usage flag? I think "Graphics Storage Read" makes sense...
+                            .with_usage(BufferUsageFlags::GRAPHICS_STORAGE_READ)
+                            .build()
+                            .unwrap();
+
+                        // Fill the transfer buffer with the morph target data
+                        let mut buffer_mem_map = transfer_buffer.map(&gpu_device, true);
+                        let buffer_mem_map_mem_mut: &mut [u32] = buffer_mem_map.mem_mut();
+                        for (index, &value) in morph_positions_temp_vector.iter().enumerate() {
+                            buffer_mem_map_mem_mut[index] = value;
+                        }
+                        buffer_mem_map.unmap();
+
+                        // Set the location of the data (it's at the start of the transfer buffer)
+                        let data_location = TransferBufferLocation::default()
+                            .with_transfer_buffer(&transfer_buffer)
+                            .with_offset(0u32);
+
+                        // Set what region of the buffer to transfer (the size of the indices data)
+                        let buffer_region = BufferRegion::default()
+                            .with_buffer(&index_buffer)
+                            .with_size(primitive_morph_target_size)
+                            .with_offset(0u32);
+
+                        // Upload the data
+                        copy_pass.upload_to_gpu_buffer(data_location, buffer_region, true);
+
+                        Some(morph_target_buffer)
+                    } else {
+                        None
+                    };
+
                     // Release the index transfer buffer
                     drop(transfer_buffer);
 
@@ -236,6 +294,8 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                         vertex_buffer: vertex_buffer,
                         index_buffer: index_buffer,
                         index_count: indices.len() as u32,
+                        morph_target_buffer: morph_target_buffer,
+                        morph_target_count: morph_positions_count,
                     }
                 })
                 .collect();
@@ -653,10 +713,11 @@ pub fn main() {
     //     &gpu_device,
     // ));
 
-    loaded_models.push(load_model_and_copy_to_gpu(
-        "models/AnimatedTriangle.gltf",
-        &gpu_device,
-    ));
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/AnimatedTriangle.gltf",
+    //     &gpu_device,
+    // ));
+
     // loaded_models.push(load_model_and_copy_to_gpu(
     //     "models/cube_anim_test2.glb",
     //     &gpu_device,
@@ -679,13 +740,13 @@ pub fn main() {
     //     &gpu_device,
     // ));
 
-    // loaded_models.push(load_model_and_copy_to_gpu(
-    //     "models/MorphTargetExample.glb",
-    //     &gpu_device,
-    // ));
+    loaded_models.push(load_model_and_copy_to_gpu(
+        "models/MorphTargetExample.gltf",
+        &gpu_device,
+    ));
 
     // loaded_models.push(load_model_and_copy_to_gpu(
-    //     "models/VertexSkinExample.glb",
+    //     "models/VertexSkinExample.gltf",
     //     &gpu_device,
     // ));
 
