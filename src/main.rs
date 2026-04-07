@@ -14,6 +14,7 @@ use sdl3::libc::c_float;
 use sdl3::mouse::MouseButton;
 use sdl3::pixels::Color;
 use sdl3::sys::gpu::*;
+use std::ops::Deref;
 use std::time::Duration;
 
 // The vertex input layout
@@ -36,6 +37,7 @@ struct Vertex {
 
 struct PrimitiveData {
     vertex_buffer: Buffer,
+    vertex_count: u32,
     index_buffer: Buffer,
     index_count: u32,
     morph_target_buffer: Option<Buffer>,
@@ -111,7 +113,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     // reader.read_joints(set)
                     // reader.read_weights(set)
 
-                    let mut morph_positions_temp_vector = Vec::new();
+                    let mut morph_positions_vector = Vec::new();
                     let mut morph_positions_count: u32 = 0;
                     for morph_target in reader.read_morph_targets() {
                         // morph_target is (positions, normals, tangents) but each is optional
@@ -119,7 +121,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                             // Only looking at positions for now
                             morph_positions_count += 1;
                             for morph_position in morph_positions {
-                                morph_positions_temp_vector.push(morph_position);
+                                morph_positions_vector.push(morph_position);
                             }
                         }
                     }
@@ -175,12 +177,14 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
 
                     // How big is the morph target data to transfer
                     let primitive_morph_target_size =
-                        morph_positions_count * primitive_vertices_size;
+                        (morph_positions_vector.len() * size_of::<u32>() * 3) as u32;
+                    dbg!(primitive_morph_target_size);
 
                     // Determine which is larger
                     let larger_size = primitive_vertices_size
                         .max(primitive_indices_size)
                         .max(primitive_morph_target_size);
+                    dbg!(larger_size);
 
                     // Create the transfer buffer, the vertices and the indices (and optionally the morph target) will both use this to upload to the gpu
                     let transfer_buffer = gpu_device
@@ -254,7 +258,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     let morph_target_buffer: Option<Buffer> = if morph_positions_count > 0 {
                         let morph_target_buffer = gpu_device
                             .create_buffer()
-                            .with_size(primitive_indices_size)
+                            .with_size(primitive_morph_target_size)
                             // Not sure on the buffer usage flag? I think "Graphics Storage Read" makes sense...
                             .with_usage(BufferUsageFlags::GRAPHICS_STORAGE_READ)
                             .build()
@@ -262,8 +266,8 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
 
                         // Fill the transfer buffer with the morph target data
                         let mut buffer_mem_map = transfer_buffer.map(&gpu_device, true);
-                        let buffer_mem_map_mem_mut: &mut [u32] = buffer_mem_map.mem_mut();
-                        for (index, &value) in morph_positions_temp_vector.iter().enumerate() {
+                        let buffer_mem_map_mem_mut: &mut [[f32; 3]] = buffer_mem_map.mem_mut();
+                        for (index, &value) in morph_positions_vector.iter().enumerate() {
                             buffer_mem_map_mem_mut[index] = value;
                         }
                         buffer_mem_map.unmap();
@@ -275,7 +279,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
 
                         // Set what region of the buffer to transfer (the size of the indices data)
                         let buffer_region = BufferRegion::default()
-                            .with_buffer(&index_buffer)
+                            .with_buffer(&morph_target_buffer)
                             .with_size(primitive_morph_target_size)
                             .with_offset(0u32);
 
@@ -292,6 +296,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
 
                     PrimitiveData {
                         vertex_buffer: vertex_buffer,
+                        vertex_count: vertices.len() as u32,
                         index_buffer: index_buffer,
                         index_count: indices.len() as u32,
                         morph_target_buffer: morph_target_buffer,
@@ -575,7 +580,7 @@ pub fn main() {
         )
         .with_entrypoint(c"main")
         .with_samplers(0)
-        .with_storage_buffers(0)
+        .with_storage_buffers(1)
         .with_storage_textures(0)
         .with_uniform_buffers(1)
         .build()
@@ -1283,8 +1288,7 @@ pub fn main() {
                     // multiply_matrices(multiplied_transform_matrix, player_transform);
 
                     // Send transform to shader as a uniform
-                    command_buffer
-                        .push_vertex_uniform_data(0, &multiplied_and_player_transform_matrix);
+                    // command_buffer.push_vertex_uniform_data(0, &multiplied_and_player_transform_matrix);
                     // command_buffer.push_vertex_uniform_data(0, &multiplied_transform_matrix);
                     // command_buffer.push_vertex_uniform_data(0, &IDENTITY_MATRIX);
                     // command_buffer.push_vertex_uniform_data(0, &player_transform);
@@ -1293,6 +1297,16 @@ pub fn main() {
                     for primitive in mesh.primitives() {
                         // Look up the primitive data
                         let primitive_data = mesh_data.primitives.get(primitive.index()).unwrap();
+
+                        command_buffer.push_vertex_uniform_data(
+                            0,
+                            &(
+                                multiplied_and_player_transform_matrix,
+                                primitive_data.morph_target_count,
+                                primitive_data.vertex_count,
+                                [1.0f32, 1.0f32, 0.0f32, 0.0f32],
+                            ),
+                        );
 
                         // Setup the buffer bindings for vertices
                         let buffer_bindings_vertex = BufferBinding::new()
@@ -1337,7 +1351,21 @@ pub fn main() {
                             render_pass.bind_fragment_samplers(0, &[texture_sampler_binding]);
                         }
 
-                        // Issue the draw call using the indexes
+                        if primitive_data.morph_target_buffer.is_some() {
+                            render_pass.bind_vertex_storage_buffers(
+                                0,
+                                &[primitive_data.morph_target_buffer.clone().unwrap()],
+                            );
+                        }
+                        // if let Some(morph_target_buffer) = primitive_data.morph_target_buffer {
+                        //     // let buffer_bindings_morph = BufferBinding::new()
+                        //     //     .with_buffer(&morph_target_buffer)
+                        //     //     .with_offset(0);
+                        //     // render_pass.bind_vertex_storage_buffers(0, &[buffer_bindings_morph]);
+                        //     render_pass.bind_vertex_storage_buffers(0, &[morph_target_buffer]);
+                        // }
+
+                        // Issue the draw call using the indexes and other bound data
                         render_pass.draw_indexed_primitives(primitive_data.index_count, 1, 0, 0, 0);
                     }
 

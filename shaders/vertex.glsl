@@ -14,12 +14,56 @@ layout(std140, set = 1, binding = 0) uniform UniformBlock {
     // float x_pos;
     // float y_pos;
     mat4 transform_matrix;
+    uint morph_target_count;
+    uint vertex_count;
+    vec4 morph_weights;
+};
+
+layout(std430, binding = 0) readonly buffer BufferBlock {
+    vec3 morph_target[];
 };
 
 void main()
 {
+    // Apply the morph target
+    vec3 morph_1;
+    if (morph_target_count >= 1) {
+        morph_1 = morph_target[gl_VertexIndex];
+    }
+    else {
+        morph_1 = vec3(0.0, 0.0, 0.0);
+    }
+    vec3 morph_2;
+    if (morph_target_count >= 2) {
+        morph_2 = morph_target[vertex_count + gl_VertexIndex];
+    }
+    else {
+        morph_2 = vec3(0.0, 0.0, 0.0);
+    }
+    vec3 morph_3;
+    if (morph_target_count >= 3) {
+        morph_3 = morph_target[(2 * vertex_count) + gl_VertexIndex];
+    }
+    else {
+        morph_3 = vec3(0.0, 0.0, 0.0);
+    }
+    vec3 morph_4;
+    if (morph_target_count >= 4) {
+        morph_4 = morph_target[(3 * vertex_count) + gl_VertexIndex];
+    }
+    else {
+        morph_4 = vec3(0.0, 0.0, 0.0);
+    }
+    vec4 a_position_morphed = vec4(
+            a_position.x + morph_1.x * morph_weights[0] + morph_2.x * morph_weights[1] + morph_3.x * morph_weights[2] + morph_4.x * morph_weights[3],
+            a_position.y + morph_1.y * morph_weights[0] + morph_2.y * morph_weights[1] + morph_3.y * morph_weights[2] + morph_4.y * morph_weights[3],
+            a_position.z + morph_1.z * morph_weights[0] + morph_2.z * morph_weights[1] + morph_3.z * morph_weights[2] + morph_4.z * morph_weights[3],
+            1.0
+        );
+
     // Apply transformation from transformation matrix
-    vec4 a_position_transformed = vec4(a_position, 1.0) * transform_matrix;
+    vec4 a_position_transformed = vec4(a_position_morphed) * transform_matrix;
+    // vec4 a_position_transformed = vec4(a_position, 1.0) * transform_matrix;
     // vec4 a_position_transformed = vec4(a_position, 1.0);
 
     // change the x and y values with the z value to create the illusion of distance/depth
