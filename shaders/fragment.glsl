@@ -11,6 +11,7 @@ layout (location = 0) out vec4 FragColor;
 //     float time;
 // };
 
+// set = 3: for fragment shaders, set 3 is used for uniforms
 // layout(std140, set = 3, binding = 1) uniform UniformBlock2 {
 //     // gsampler2d texture_sampler;
 //     sampler texture_sampler;

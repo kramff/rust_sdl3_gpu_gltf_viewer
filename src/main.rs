@@ -11,10 +11,10 @@ use sdl3::event::Event;
 use sdl3::gpu::*;
 use sdl3::keyboard::Keycode;
 use sdl3::libc::c_float;
+use sdl3::libc::c_uint;
 use sdl3::mouse::MouseButton;
 use sdl3::pixels::Color;
 use sdl3::sys::gpu::*;
-use std::ops::Deref;
 use std::time::Duration;
 
 // The vertex input layout
@@ -68,7 +68,7 @@ enum AnimationOutput {
 struct AnimationChannelData {
     // target_property: Property,
     target_node_index: usize,
-    interpolation: Interpolation,
+    // interpolation: Interpolation,
     inputs: Vec<f32>,
     outputs: Vec<AnimationOutput>,
     channel_index: usize,
@@ -79,6 +79,14 @@ struct ModelData<'a> {
     images: Vec<ImageData<'a>>,
     document: Document,
     animations: Vec<AnimationData>,
+}
+
+#[allow(dead_code)] // Compiler doesn't see that the code is used to pass info to the gpu
+struct VertexUniformBuffer {
+    transform_matrix: [[c_float; 4]; 4],
+    morph_weights: [c_float; 4],
+    morph_target_count: c_uint,
+    vertex_count: c_uint,
 }
 
 fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> ModelData<'a> {
@@ -125,7 +133,6 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                             }
                         }
                     }
-                    // TODO:
 
                     // Get vertex colors
                     let mut colors_temp_vector = Vec::new();
@@ -177,14 +184,12 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
 
                     // How big is the morph target data to transfer
                     let primitive_morph_target_size =
-                        (morph_positions_vector.len() * size_of::<u32>() * 3) as u32;
-                    dbg!(primitive_morph_target_size);
+                        (morph_positions_vector.len() * size_of::<[f32; 3]>()) as u32;
 
                     // Determine which is larger
                     let larger_size = primitive_vertices_size
                         .max(primitive_indices_size)
                         .max(primitive_morph_target_size);
-                    dbg!(larger_size);
 
                     // Create the transfer buffer, the vertices and the indices (and optionally the morph target) will both use this to upload to the gpu
                     let transfer_buffer = gpu_device
@@ -449,7 +454,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     AnimationChannelData {
                         // target_property: channel.target().property(),
                         target_node_index: channel.target().node().index(),
-                        interpolation: channel.sampler().interpolation(),
+                        // interpolation: channel.sampler().interpolation(),
                         inputs: animation_inputs,
                         outputs: animation_outputs,
                         channel_index: channel.index(),
@@ -785,6 +790,7 @@ pub fn main() {
     'running: loop {
         game_ticks += 1;
         let game_seconds = (game_ticks as f32) / 60.0;
+        let game_seconds_modulo = game_seconds % 1.0;
         for event in event_pump.poll_iter() {
             imgui.handle_event(&event);
             match event {
@@ -1068,21 +1074,21 @@ pub fn main() {
                     // TODO Should somehow cache which animations -> channels go with which nodes instead of searching here, but for now it's fine
                     for animation in &model.animations {
                         // Look up original animation for reference
-                        let animation_ref = model
-                            .document
-                            .animations()
-                            .skip(animation.animation_index)
-                            .next()
-                            .unwrap();
+                        // let animation_ref = model
+                        //     .document
+                        //     .animations()
+                        //     .skip(animation.animation_index)
+                        //     .next()
+                        //     .unwrap();
                         // TODO - should check if the animation is active, otherwise all animations will be playing constantly
                         for channel in &animation.channels {
                             if channel.target_node_index == node.index() {
                                 // Look up original channel for reference
-                                let channel_ref = animation_ref
-                                    .channels()
-                                    .skip(channel.channel_index)
-                                    .next()
-                                    .unwrap();
+                                // let channel_ref = animation_ref
+                                //     .channels()
+                                //     .skip(channel.channel_index)
+                                //     .next()
+                                //     .unwrap();
                                 // This is a channel that matches the current node in the model, so apply the animation's transforms to the animation_matrix
 
                                 // Based on the current time and the input (time) data , figure out the output value
@@ -1300,12 +1306,17 @@ pub fn main() {
 
                         command_buffer.push_vertex_uniform_data(
                             0,
-                            &(
-                                multiplied_and_player_transform_matrix,
-                                primitive_data.morph_target_count,
-                                primitive_data.vertex_count,
-                                [1.0f32, 1.0f32, 0.0f32, 0.0f32],
-                            ),
+                            &VertexUniformBuffer {
+                                transform_matrix: multiplied_and_player_transform_matrix,
+                                morph_weights: [
+                                    game_seconds_modulo,
+                                    game_seconds_modulo,
+                                    0.0f32,
+                                    0.0f32,
+                                ],
+                                morph_target_count: primitive_data.morph_target_count,
+                                vertex_count: primitive_data.vertex_count,
+                            },
                         );
 
                         // Setup the buffer bindings for vertices
@@ -1357,6 +1368,8 @@ pub fn main() {
                                 &[primitive_data.morph_target_buffer.clone().unwrap()],
                             );
                         }
+                        // TODO: does there need to be a "dummy" buffer for when there are no morph targets?
+
                         // if let Some(morph_target_buffer) = primitive_data.morph_target_buffer {
                         //     // let buffer_bindings_morph = BufferBinding::new()
                         //     //     .with_buffer(&morph_target_buffer)
@@ -1399,6 +1412,7 @@ pub fn main() {
                 ui.text(format!("Rotate x: {}", mouse_drag_x));
                 ui.text(format!("Rotate y: {}", mouse_drag_y));
                 ui.text(format!("Frames: {}", game_ticks));
+                // ui.text(format!("Seconds modulo: {}", game_seconds_modulo));
                 let button_clicked = ui.button("Reset camera");
                 if button_clicked {
                     player_x = 0.0;

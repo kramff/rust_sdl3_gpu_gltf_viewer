@@ -10,14 +10,22 @@ layout(location = 2) in vec2 a_tex_coord;
 layout(location = 0) out vec4 v_color;
 layout(location = 1) out vec2 v_tex_coord;
 
+// set = 1: for vertex shaders, set 1 is used for uniforms
 layout(std140, set = 1, binding = 0) uniform UniformBlock {
     // float x_pos;
     // float y_pos;
+
+    // TODO - Figure out more about "Uniform Buffer Layout"
+    // https://registry.khronos.org/OpenGL/specs/gl/glspec45.core.pdf#page=159
+    // If these uniform values are in a different order, they get messed up
+    // Because there's padding around them to make them, and my rendering code isn't accounting for that
+    // (Or something like that, I'm not entirely sure)
     mat4 transform_matrix;
+    vec4 morph_weights;
     uint morph_target_count;
     uint vertex_count;
-    vec4 morph_weights;
 };
+
 
 layout(std430, binding = 0) readonly buffer BufferBlock {
     vec3 morph_target[];
@@ -26,6 +34,7 @@ layout(std430, binding = 0) readonly buffer BufferBlock {
 void main()
 {
     // Apply the morph target
+    
     vec3 morph_1;
     if (morph_target_count >= 1) {
         morph_1 = morph_target[gl_VertexIndex];
@@ -60,6 +69,19 @@ void main()
             a_position.z + morph_1.z * morph_weights[0] + morph_2.z * morph_weights[1] + morph_3.z * morph_weights[2] + morph_4.z * morph_weights[3],
             1.0
         );
+    
+    // vec4 a_position_morphed = vec4(
+    //         a_position.x + morph_weights.x,
+    //         a_position.y + morph_weights.y,
+    //         a_position.z + morph_weights.z,
+    //         1.0
+    //     );
+    // vec4 a_position_morphed = vec4(
+    //         a_position.x,
+    //         a_position.y,
+    //         a_position.z,
+    //         1.0
+    //     );
 
     // Apply transformation from transformation matrix
     vec4 a_position_transformed = vec4(a_position_morphed) * transform_matrix;
