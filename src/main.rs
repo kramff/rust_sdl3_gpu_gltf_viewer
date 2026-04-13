@@ -58,6 +58,7 @@ struct AnimationData {
     animation_index: usize,
 }
 
+#[derive(Debug)]
 enum AnimationOutput {
     Translation([f32; 3]),
     Rotation([f32; 4]),
@@ -451,6 +452,8 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                 })
                                 .collect(),
                         };
+                    println!("animation_outputs length: {}", animation_outputs.len());
+                    dbg!(&animation_outputs);
                     AnimationChannelData {
                         // target_property: channel.target().property(),
                         target_node_index: channel.target().node().index(),
@@ -1067,7 +1070,8 @@ pub fn main() {
                     // multiply_matrices(inherited_transform_matrix, alternate_matrix);
                     multiply_matrices(inherited_transform_matrix, flipped_matrix);
 
-                let animation_transform_matrix = {
+                let (animation_transform_matrix, morph_weights) = {
+                    let mut animated_morph_weights = [0.0f32, 0.0f32, 0.0f32, 0.0f32];
                     // TODO could probably do some fancy vector reduce trick but for now it just has a mutable variable that all relevant animations apply to
                     // TODO Not sure if this is the correct, approach, might need to get the translate, rotate, scale components out and multiply them in a specific order?
                     let mut animation_full_matrix = IDENTITY_MATRIX;
@@ -1080,7 +1084,7 @@ pub fn main() {
                         //     .skip(animation.animation_index)
                         //     .next()
                         //     .unwrap();
-                        // TODO - should check if the animation is active, otherwise all animations will be playing constantly
+                        // TODO - should check if the animation is "active", otherwise all animations will be playing constantly
                         for channel in &animation.channels {
                             if channel.target_node_index == node.index() {
                                 // Look up original channel for reference
@@ -1094,8 +1098,6 @@ pub fn main() {
                                 // Based on the current time and the input (time) data , figure out the output value
                                 // channel.inputs
 
-                                // TODO very dumb approach that will just iterate through the output values 1 tick at a time, should actually use time and math and the interpolation
-                                // let current_time = game_seconds; // % channel_ref.sampler().input().max().unwrap();
                                 let current_time = game_seconds
                                     % channel.inputs.iter().max_by(|a, b| a.total_cmp(b)).unwrap();
 
@@ -1238,7 +1240,12 @@ pub fn main() {
                                     (
                                         &AnimationOutput::MorphTargetWeight(previous_weight),
                                         &AnimationOutput::MorphTargetWeight(next_weight),
-                                    ) => IDENTITY_MATRIX,
+                                    ) => {
+                                        let interpolated_weight = previous_weight
+                                            + interpolation_value * (next_weight - previous_weight);
+                                        animated_morph_weights[0] = interpolated_weight;
+                                        IDENTITY_MATRIX
+                                    }
                                     _ => panic!(
                                         "should always have the same animation type for previous and next"
                                     ),
@@ -1276,7 +1283,7 @@ pub fn main() {
                             }
                         }
                     }
-                    animation_full_matrix
+                    (animation_full_matrix, animated_morph_weights)
                 };
 
                 // TODO - check if this is the right order, I don't have a good intuition about which matrix should come first
@@ -1308,12 +1315,7 @@ pub fn main() {
                             0,
                             &VertexUniformBuffer {
                                 transform_matrix: multiplied_and_player_transform_matrix,
-                                morph_weights: [
-                                    game_seconds_modulo,
-                                    game_seconds_modulo,
-                                    0.0f32,
-                                    0.0f32,
-                                ],
+                                morph_weights: morph_weights,
                                 morph_target_count: primitive_data.morph_target_count,
                                 vertex_count: primitive_data.vertex_count,
                             },
