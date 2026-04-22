@@ -28,40 +28,40 @@ layout(std140, set = 1, binding = 0) uniform UniformBlock {
 
 
 layout(std430, binding = 0) readonly buffer BufferBlock {
-    vec3 morph_target[];
+    vec4 morph_target[];
 };
 
 void main()
 {
     // Apply the morph target
     
-    vec3 morph_1;
+    vec4 morph_1;
     if (morph_target_count >= 1) {
         morph_1 = morph_target[gl_VertexIndex];
     }
     else {
-        morph_1 = vec3(0.0, 0.0, 0.0);
+        morph_1 = vec4(0.0, 0.0, 0.0, 0.0);
     }
-    vec3 morph_2;
+    vec4 morph_2;
     if (morph_target_count >= 2) {
         morph_2 = morph_target[vertex_count + gl_VertexIndex];
     }
     else {
-        morph_2 = vec3(0.0, 0.0, 0.0);
+        morph_2 = vec4(0.0, 0.0, 0.0, 0.0);
     }
-    vec3 morph_3;
+    vec4 morph_3;
     if (morph_target_count >= 3) {
         morph_3 = morph_target[(2 * vertex_count) + gl_VertexIndex];
     }
     else {
-        morph_3 = vec3(0.0, 0.0, 0.0);
+        morph_3 = vec4(0.0, 0.0, 0.0, 0.0);
     }
-    vec3 morph_4;
+    vec4 morph_4;
     if (morph_target_count >= 4) {
         morph_4 = morph_target[(3 * vertex_count) + gl_VertexIndex];
     }
     else {
-        morph_4 = vec3(0.0, 0.0, 0.0);
+        morph_4 = vec4(0.0, 0.0, 0.0, 0.0);
     }
     vec4 a_position_morphed = vec4(
             a_position.x + morph_1.x * morph_weights[0] + morph_2.x * morph_weights[1] + morph_3.x * morph_weights[2] + morph_4.x * morph_weights[3],

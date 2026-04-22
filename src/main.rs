@@ -4,7 +4,6 @@
 extern crate sdl3;
 
 use gltf::Document;
-use gltf::animation::Interpolation;
 use gltf::animation::util::ReadOutputs;
 use imgui_sdl3::ImGuiSdl3;
 use sdl3::event::Event;
@@ -63,7 +62,7 @@ enum AnimationOutput {
     Translation([f32; 3]),
     Rotation([f32; 4]),
     Scale([f32; 3]),
-    MorphTargetWeight(f32),
+    MorphTargetWeight(Vec<f32>),
 }
 
 struct AnimationChannelData {
@@ -185,7 +184,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
 
                     // How big is the morph target data to transfer
                     let primitive_morph_target_size =
-                        (morph_positions_vector.len() * size_of::<[f32; 3]>()) as u32;
+                        (morph_positions_vector.len() * size_of::<[f32; 4]>()) as u32;
 
                     // Determine which is larger
                     let larger_size = primitive_vertices_size
@@ -270,11 +269,27 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                             .build()
                             .unwrap();
 
+                        let mut fake_add = 0.01;
+
                         // Fill the transfer buffer with the morph target data
                         let mut buffer_mem_map = transfer_buffer.map(&gpu_device, true);
-                        let buffer_mem_map_mem_mut: &mut [[f32; 3]] = buffer_mem_map.mem_mut();
+                        let buffer_mem_map_mem_mut: &mut [[f32; 4]] = buffer_mem_map.mem_mut();
                         for (index, &value) in morph_positions_vector.iter().enumerate() {
-                            buffer_mem_map_mem_mut[index] = value;
+                            // buffer_mem_map_mem_mut[index] = value;
+                            // dbg!(value);
+                            // let mut fake_value = value.clone();
+                            // fake_value[0] = fake_add + value[0];
+                            // fake_add += 0.01;
+                            // fake_value[1] = fake_add + value[1];
+                            // fake_add += 0.01;
+                            // fake_value[2] = fake_add + value[2];
+                            // fake_add += 0.01;
+                            // dbg!(fake_value);
+                            // buffer_mem_map_mem_mut[index] = fake_value;
+
+                            // Pad with a 0.0 to make it 4 long instead of 3
+                            let transfer_value: [f32; 4] = [value[0], value[1], value[2], 0.0];
+                            buffer_mem_map_mem_mut[index] = transfer_value;
                         }
                         buffer_mem_map.unmap();
 
@@ -425,8 +440,9 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                         channel.reader(|buffer| Some(&buffers[buffer.index()]));
 
                     // Get the input data
-                    let animation_inputs =
+                    let animation_inputs: Vec<f32> =
                         animation_sampler_reader.read_inputs().unwrap().collect();
+                    // println!("animation inputs length: {}", animation_inputs.len());
 
                     // Get the output data
                     let animation_outputs: Vec<AnimationOutput> =
@@ -445,15 +461,41 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                             ReadOutputs::Scales(scales) => scales
                                 .map(|scale| -> AnimationOutput { AnimationOutput::Scale(scale) })
                                 .collect(),
-                            ReadOutputs::MorphTargetWeights(weights) => weights
-                                .into_f32()
-                                .map(|weight| -> AnimationOutput {
-                                    AnimationOutput::MorphTargetWeight(weight)
-                                })
-                                .collect(),
+                            ReadOutputs::MorphTargetWeights(weights) => {
+                                let weights_f32 = weights.into_f32();
+                                let weight_chunk_size = weights_f32.len() / animation_inputs.len();
+                                let weights_vec: Vec<f32> = weights_f32.collect();
+                                let weights_chunks = weights_vec.chunks(weight_chunk_size);
+                                weights_chunks
+                                    .map(|chunk| -> AnimationOutput {
+                                        let chunk_vec = chunk.to_vec();
+                                        AnimationOutput::MorphTargetWeight(chunk_vec)
+                                    })
+                                    .collect()
+                                // for chunk in weights_chunks {
+                                //     println!("chunk len {}", chunk.len());
+                                // }
+
+                                // let weights_grouped:Vec<Vec<f32>> = weights_vec.chunks(weight_chunk_size).map(|weight_chunk| -> AnimationOutput {
+                                //     // AnimationOutput::MorphTargetWeight(weight_chunk)
+                                //     AnimationOutput::MorphTargetWeight(vec![0.5, 0.8])
+                                // }).collect()
+                                // weights_grouped
+                                // .map(|weight| -> AnimationOutput {
+                                //     AnimationOutput::MorphTargetWeight(weight)
+                                // })
+                                // .collect();
+                                // vec![
+                                //     AnimationOutput::MorphTargetWeight(vec![0.0, 0.0]),
+                                //     AnimationOutput::MorphTargetWeight(vec![0.0, 1.0]),
+                                //     AnimationOutput::MorphTargetWeight(vec![1.0, 1.0]),
+                                //     AnimationOutput::MorphTargetWeight(vec![1.0, 0.0]),
+                                //     AnimationOutput::MorphTargetWeight(vec![0.0, 0.0]),
+                                // ]
+                            }
                         };
-                    println!("animation_outputs length: {}", animation_outputs.len());
-                    dbg!(&animation_outputs);
+                    // println!("animation_outputs length: {}", animation_outputs.len());
+                    // dbg!(&animation_outputs);
                     AnimationChannelData {
                         // target_property: channel.target().property(),
                         target_node_index: channel.target().node().index(),
@@ -1238,12 +1280,33 @@ pub fn main() {
                                                 * (next_scale[2] - previous_scale[2]),
                                     ),
                                     (
-                                        &AnimationOutput::MorphTargetWeight(previous_weight),
-                                        &AnimationOutput::MorphTargetWeight(next_weight),
+                                        AnimationOutput::MorphTargetWeight(previous_weight),
+                                        AnimationOutput::MorphTargetWeight(next_weight),
                                     ) => {
-                                        let interpolated_weight = previous_weight
-                                            + interpolation_value * (next_weight - previous_weight);
-                                        animated_morph_weights[0] = interpolated_weight;
+                                        // Calculate weights
+                                        // For 0
+                                        animated_morph_weights[0] = previous_weight[0]
+                                            + interpolation_value
+                                                * (next_weight[0] - previous_weight[0]);
+                                        // For 1
+                                        if previous_weight.len() > 1 {
+                                            animated_morph_weights[1] = previous_weight[1]
+                                                + interpolation_value
+                                                    * (next_weight[1] - previous_weight[1]);
+                                        }
+                                        // For 2
+                                        if previous_weight.len() > 2 {
+                                            animated_morph_weights[2] = previous_weight[2]
+                                                + interpolation_value
+                                                    * (next_weight[2] - previous_weight[2]);
+                                        }
+                                        // For 3
+                                        if previous_weight.len() > 3 {
+                                            animated_morph_weights[3] = previous_weight[3]
+                                                + interpolation_value
+                                                    * (next_weight[3] - previous_weight[3]);
+                                        }
+                                        // Return identity matrix for the transform matrix part
                                         IDENTITY_MATRIX
                                     }
                                     _ => panic!(
