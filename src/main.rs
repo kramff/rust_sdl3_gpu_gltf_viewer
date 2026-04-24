@@ -851,6 +851,9 @@ pub fn main() {
     let mut mouse_drag_x = 0.0;
     let mut mouse_drag_y = 0.0;
 
+    let mut current_animation = 0;
+    let mut max_animation: usize = 0;
+
     // Event handling
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
@@ -1098,6 +1101,8 @@ pub fn main() {
                 // remaining_node_transform_pairs.push((node, player_transform));
             }
 
+            max_animation = model.animations.len().clone();
+
             while !remaining_node_transform_pairs.is_empty() {
                 // Take a node off the list
                 let (node, inherited_transform_matrix) =
@@ -1161,6 +1166,8 @@ pub fn main() {
                             // Cache the calculated global transforms of each node
                             // Detect changes in the local transforms of ancestor nodes, then
                             // Update global transforms only when necessary
+
+                            // Also my 3d model is probably incredibly poorly optimized
 
                             for channel in &animation.channels {
                                 if channel.target_node_index == node.index() {
@@ -1520,7 +1527,7 @@ pub fn main() {
         // Start another render pass for the gui
 
         // Display gui with imgui
-        /*imgui.render(
+        imgui.render(
             &mut sdl_context,
             &gpu_device,
             &window,
@@ -1536,16 +1543,25 @@ pub fn main() {
                 ui.text(format!("Rotate y: {}", mouse_drag_y));
                 ui.text(format!("Frames: {}", game_ticks));
                 // ui.text(format!("Seconds modulo: {}", game_seconds_modulo));
-                let button_clicked = ui.button("Reset camera");
-                if button_clicked {
+                let reset_button = ui.button("Reset camera");
+                if reset_button {
                     player_x = 0.0;
                     player_y = 0.0;
                     player_z = 0.0;
                     mouse_drag_x = 0.0;
                     mouse_drag_y = 0.0;
                 }
+                ui.text(format!("Max animations: {}", max_animation));
+                ui.text(format!("Current animation {}", current_animation));
+                let animation_button = ui.button("Next animation");
+                if animation_button {
+                    current_animation += 1;
+                    if current_animation > max_animation {
+                        current_animation = 0;
+                    }
+                }
             },
-        );*/
+        );
 
         // Submit the command buffer
         command_buffer.submit().unwrap();
