@@ -69,6 +69,9 @@ void main()
             a_position.z + morph_1.z * morph_weights[0] + morph_2.z * morph_weights[1] + morph_3.z * morph_weights[2] + morph_4.z * morph_weights[3],
             1.0
         );
+
+    
+
     
     // vec4 a_position_morphed = vec4(
     //         a_position.x + morph_weights.x,
