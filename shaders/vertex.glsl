@@ -24,8 +24,8 @@ layout(std140, set = 1, binding = 0) uniform UniformBlock {
     vec4 morph_weights;
     uint morph_target_count;
     uint vertex_count;
+    mat4 joints[];
 };
-
 
 layout(std430, binding = 0) readonly buffer BufferBlock {
     vec4 morph_target[];
@@ -34,7 +34,12 @@ layout(std430, binding = 0) readonly buffer BufferBlock {
 void main()
 {
     // Apply the morph target
-    
+
+    // TODO - This code could probably be way more efficient.
+    // Check how many morph target counts there are FIRST and then go down different branches.
+    // Try to minimize how many if statements there are and minimize unnecessary calculations.
+    // I think it's better to have more code that isn't ran in all cases than to do extra work every time.
+
     vec4 morph_1;
     if (morph_target_count >= 1) {
         morph_1 = morph_target[gl_VertexIndex];
@@ -63,6 +68,7 @@ void main()
     else {
         morph_4 = vec4(0.0, 0.0, 0.0, 0.0);
     }
+    // This is doing so much extra work especially if there are no morph weights being used.
     vec4 a_position_morphed = vec4(
             a_position.x + morph_1.x * morph_weights[0] + morph_2.x * morph_weights[1] + morph_3.x * morph_weights[2] + morph_4.x * morph_weights[3],
             a_position.y + morph_1.y * morph_weights[0] + morph_2.y * morph_weights[1] + morph_3.y * morph_weights[2] + morph_4.y * morph_weights[3],
@@ -70,9 +76,6 @@ void main()
             1.0
         );
 
-    
-
-    
     // vec4 a_position_morphed = vec4(
     //         a_position.x + morph_weights.x,
     //         a_position.y + morph_weights.y,

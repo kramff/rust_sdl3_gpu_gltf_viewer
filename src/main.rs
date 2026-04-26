@@ -97,6 +97,10 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
     let copy_command_buffer = gpu_device.acquire_command_buffer().unwrap();
     let copy_pass = gpu_device.begin_copy_pass(&copy_command_buffer).unwrap();
 
+    for skin in document.skins() {
+        // println!("skin name: {}", skin.name().unwrap_or("no name"));
+    }
+
     let meshes_vec = document
         .meshes()
         .map(|mesh| -> MeshData {
@@ -118,8 +122,16 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     // Currently unused:
                     // reader.read_normals()
                     // reader.read_tangents()
-                    // reader.read_joints(set)
-                    // reader.read_weights(set)
+                    if let Some(joints_reader) = reader.read_joints(0) {
+                        for joint in joints_reader.into_u16() {
+                            // println!("j: {:?}", joint);
+                        }
+                    }
+                    if let Some(weights_reader) = reader.read_weights(0) {
+                        for weight in weights_reader.into_f32() {
+                            // println!("w: {:?}", weight);
+                        }
+                    }
 
                     let mut morph_positions_vector = Vec::new();
                     let mut morph_positions_count: u32 = 0;
