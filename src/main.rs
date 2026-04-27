@@ -99,6 +99,18 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
 
     for skin in document.skins() {
         // println!("skin name: {}", skin.name().unwrap_or("no name"));
+        let skin_reader = skin.reader(|buffer| Some(&buffers[buffer.index()]));
+        if let Some(inverse_bind_matrices) = skin_reader.read_inverse_bind_matrices() {
+            println!(
+                "Skin has {} inverse bind matrices",
+                inverse_bind_matrices.len()
+            );
+        }
+        if let Some(skeleton_node) = skin.skeleton() {
+            println!("Skeleton node is index {}", skeleton_node.index());
+        } else {
+            println!("Skeleton is root node");
+        }
     }
 
     let meshes_vec = document
