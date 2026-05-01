@@ -32,6 +32,22 @@ struct Vertex {
     // vec2 Texture Coord
     u: c_float,
     v: c_float,
+    // morph targets
+    m1: [c_float; 4],
+    m2: [c_float; 4],
+    m3: [c_float; 4],
+    m4: [c_float; 4],
+    // joints
+    // TODO - figure out if u16 is acceptable for the shader
+    j1: c_uint,
+    j2: c_uint,
+    j3: c_uint,
+    j4: c_uint,
+    // weights
+    w1: c_float,
+    w2: c_float,
+    w3: c_float,
+    w4: c_float,
 }
 
 struct PrimitiveData {
@@ -87,6 +103,7 @@ struct VertexUniformBuffer {
     morph_weights: [c_float; 4],
     morph_target_count: c_uint,
     vertex_count: c_uint,
+    joint_matrices: Vec<[[c_float; 4]; 4]>,
 }
 
 fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> ModelData<'a> {
@@ -134,27 +151,37 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     // Currently unused:
                     // reader.read_normals()
                     // reader.read_tangents()
+                    let joints_temp_vec = Vec::new();
                     if let Some(joints_reader) = reader.read_joints(0) {
                         for joint in joints_reader.into_u16() {
                             // println!("j: {:?}", joint);
+                            joints_temp_vec.push(joint);
                         }
                     }
+                    let weights_temp_vec = Vec::new();
                     if let Some(weights_reader) = reader.read_weights(0) {
                         for weight in weights_reader.into_f32() {
                             // println!("w: {:?}", weight);
+                            weights_temp_vec.push(weight);
                         }
                     }
 
-                    let mut morph_positions_vector = Vec::new();
-                    let mut morph_positions_count: u32 = 0;
+                    // let mut morph_positions_vector = Vec::new();
+                    // let mut morph_positions_count: u32 = 0;
+
+                    let morph_targets_temp_vec = Vec::new();
                     for morph_target in reader.read_morph_targets() {
                         // morph_target is (positions, normals, tangents) but each is optional
-                        if let (Some(morph_positions), _, _) = morph_target {
+                        if let (Some(morph_positions), _normals, _tangents) = morph_target {
                             // Only looking at positions for now
-                            morph_positions_count += 1;
+                            // morph_positions_count += 1;
+
+                            let morph_position_temp_vec = Vec::new();
                             for morph_position in morph_positions {
-                                morph_positions_vector.push(morph_position);
+                                // morph_positions_vector.push(morph_position);
+                                morph_position_temp_vec.push(morph_position);
                             }
+                            morph_targets_temp_vec.push(morph_position_temp_vec);
                         }
                     }
 
@@ -180,6 +207,40 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                 .get(index)
                                 .or(Some(&(0f32, 0f32)))
                                 .unwrap();
+                            // Use morph positions from model data or use default value (0, 0, 0)
+                            let morph_1 = {
+                                if let Some(morph_target_1) = morph_targets_temp_vec.get(0) {
+                                    morph_target_1.get(index).unwrap_or([0, 0, 0])
+                                } else {
+                                    [0, 0, 0]
+                                }
+                            };
+                            let morph_2 = {
+                                if let Some(morph_target_1) = morph_targets_temp_vec.get(1) {
+                                    morph_target_1.get(index).unwrap_or([0, 0, 0])
+                                } else {
+                                    [0, 0, 0]
+                                }
+                            };
+                            let morph_3 = {
+                                if let Some(morph_target_1) = morph_targets_temp_vec.get(2) {
+                                    morph_target_1.get(index).unwrap_or([0, 0, 0])
+                                } else {
+                                    [0, 0, 0]
+                                }
+                            };
+                            let morph_4 = {
+                                if let Some(morph_target_1) = morph_targets_temp_vec.get(3) {
+                                    morph_target_1.get(index).unwrap_or([0, 0, 0])
+                                } else {
+                                    [0, 0, 0]
+                                }
+                            };
+                            let joint = joints_temp_vec
+                                .get(index)
+                                .unwrap_or([0u32, 0u32, 0u32, 0u32]);
+                            let weight =
+                                weights_temp_vec.get(index).unwrap_or([0.0, 0.0, 0.0, 0.0]);
                             vertices.push(Vertex {
                                 x: vertex_position[0],
                                 y: vertex_position[1],
@@ -190,6 +251,18 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                 a: vertex_color[3],
                                 u: texture_coordinate.0,
                                 v: texture_coordinate.1,
+                                m1: [morph_1[0], morph_1[1], morph_1[2], 0.0],
+                                m2: [morph_2[0], morph_2[1], morph_2[2], 0.0],
+                                m3: [morph_3[0], morph_3[1], morph_3[2], 0.0],
+                                m4: [morph_4[0], morph_4[1], morph_4[2], 0.0],
+                                j1: joint[0],
+                                j2: joint[1],
+                                j3: joint[2],
+                                j4: joint[3],
+                                w1: weight[0],
+                                w2: weight[1],
+                                w3: weight[2],
+                                w4: weight[3],
                             });
                         }
                     }

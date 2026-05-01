@@ -7,6 +7,21 @@ layout(location = 0) in vec3 a_position;
 layout(location = 1) in vec4 a_color;
 layout(location = 2) in vec2 a_tex_coord;
 
+layout(location = 3) in vec4 a_morph_1;
+layout(location = 4) in vec4 a_morph_2;
+layout(location = 5) in vec4 a_morph_3;
+layout(location = 6) in vec4 a_morph_4;
+
+layout(location = 7) in uint a_joint_1;
+layout(location = 8) in uint a_joint_2;
+layout(location = 9) in uint a_joint_3;
+layout(location = 10) in uint a_joint_4;
+
+layout(location = 11) in float a_weight_1;
+layout(location = 12) in float a_weight_2;
+layout(location = 13) in float a_weight_3;
+layout(location = 14) in float a_weight_4;
+
 layout(location = 0) out vec4 v_color;
 layout(location = 1) out vec2 v_tex_coord;
 
@@ -22,14 +37,18 @@ layout(std140, set = 1, binding = 0) uniform UniformBlock {
     // (Or something like that, I'm not entirely sure)
     mat4 transform_matrix;
     vec4 morph_weights;
-    uint morph_target_count;
-    uint vertex_count;
+
+    // uint morph_target_count;
+    // uint vertex_count;
+
+    // Array of matrix transforms, one for each joint
     mat4 joints[];
 };
 
-layout(std430, binding = 0) readonly buffer BufferBlock {
-    vec4 morph_target[];
-};
+// TODO - remove this buffer, it's all in the vertices now
+// layout(std430, binding = 0) readonly buffer BufferBlock {
+//     vec4 morph_target[];
+// };
 
 void main()
 {
