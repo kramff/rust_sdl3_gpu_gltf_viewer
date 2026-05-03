@@ -3,6 +3,7 @@
 // To compile:
 // glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv
 
+
 // VERTEX ATTRIBUTES
 
 // x, y, z position
@@ -22,6 +23,7 @@ layout(location = 4) in vec4 weights;
 
 // 3x4 matrix of morphs: each morph is an x, y, z coordinate
 layout(location = 5) in mat3x4 morphs;
+
 
 // VARIABLES TO PASS TO FRAGMENT SHADER
 
@@ -51,7 +53,7 @@ layout(std140, set = 1, binding = 0) uniform UniformBlock {
     vec4 morph_weights;
 
     // Array of matrix transforms, one for each joint
-    mat4 joint_matrices[600];
+    mat4 joint_matrices[500];
 };
 
 // CODE

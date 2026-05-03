@@ -163,12 +163,6 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                             joints_temp_vec.push(joint_u32);
                         }
                     }
-                    if joints_temp_vec.len() > 600 {
-                        println!("Uh oh I set up the shader to only accept 600 joints and this model has: {}", joints_temp_vec.len());
-                    }
-                    else {
-                        println!("This model has this many joints: {}", joints_temp_vec.len());
-                    }
                     let mut weights_temp_vec = Vec::new();
                     if let Some(weights_reader) = reader.read_weights(0) {
                         for weight in weights_reader.into_f32() {
@@ -755,7 +749,7 @@ pub fn main() {
         )
         .with_entrypoint(c"main")
         .with_samplers(0)
-        .with_storage_buffers(1)
+        .with_storage_buffers(0)
         .with_storage_textures(0)
         .with_uniform_buffers(1)
         .build()
@@ -791,31 +785,58 @@ pub fn main() {
         .with_pitch(size_of::<Vertex>() as u32);
 
     // Vertex attribute for position. a_position  (for the vertex input state, which is for the pipeline)
-    let vertex_attribute1 = VertexAttribute::new()
+    let vertex_attribute0 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(0)
         .with_format(sdl3::gpu::VertexElementFormat::Float3)
         .with_offset(0);
 
     // Vertex attribute for color. a_color (for the vertex input state, which is for the pipeline)
-    let vertex_attribute2 = VertexAttribute::new()
+    let vertex_attribute1 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(1)
         .with_format(sdl3::gpu::VertexElementFormat::Float4)
         .with_offset(size_of::<f32>() as u32 * 3); //offset 3 f32's over to pick (xyz)
 
     // Vertex attribute for texture coordinate. a_tex_coord (for the vertex input state, which is for the pipeline)
-    let vertex_attribute3 = VertexAttribute::new()
+    let vertex_attribute2 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(2)
         .with_format(sdl3::gpu::VertexElementFormat::Float2)
-        // .with_offset(0)
         .with_offset(size_of::<f32>() as u32 * 7); // offset 7 f32's over (xyz, rgba)
+
+    // Joints: 4 unsigned 32-bit integers
+    let vertex_attribute3 = VertexAttribute::new()
+        .with_buffer_slot(0)
+        .with_location(3)
+        .with_format(sdl3::gpu::VertexElementFormat::Uint4)
+        .with_offset(size_of::<f32>() as u32 * 9); // offset 9 f32's over (xyz, rgba, uv)
+
+    // Weights: 4 f32's
+    let vertex_attribute4 = VertexAttribute::new()
+        .with_buffer_slot(0)
+        .with_location(4)
+        .with_format(sdl3::gpu::VertexElementFormat::Float4)
+        .with_offset(size_of::<f32>() as u32 * 9 + (size_of::<u32>() as u32 * 4)); // offset 9 f32's over (xyz, rgba, uv) and 4 u32's over (j1, j2, j3, j4)
+
+    // Morphs: 3x4 matrix of f32's
+    let vertex_attribute5 = VertexAttribute::new()
+        .with_buffer_slot(0)
+        .with_location(5)
+        .with_format(sdl3::gpu::VertexElementFormat::Float3)
+        .with_offset(size_of::<f32>() as u32 * 13 + (size_of::<u32>() as u32 * 4)); // offset 9 f32's over (xyz, rgba, uv) and 4 u32's over (j1, j2, j3, j4)
 
     // Vertex input state (for the pipeline)
     let vertex_input_state = sdl3::gpu::VertexInputState::new()
         .with_vertex_buffer_descriptions(&[vertex_buffer_description])
-        .with_vertex_attributes(&[vertex_attribute1, vertex_attribute2, vertex_attribute3]);
+        .with_vertex_attributes(&[
+            vertex_attribute0,
+            vertex_attribute1,
+            vertex_attribute2,
+            vertex_attribute3,
+            vertex_attribute4,
+            vertex_attribute5,
+        ]);
 
     // Describe the color target (for the target info, which is for the pipeline)
     let color_target_description =
