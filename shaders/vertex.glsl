@@ -3,29 +3,37 @@
 // To compile:
 // glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv
 
-layout(location = 0) in vec3 a_position;
-layout(location = 1) in vec4 a_color;
-layout(location = 2) in vec2 a_tex_coord;
+// VERTEX ATTRIBUTES
 
-layout(location = 3) in vec4 a_morph_1;
-layout(location = 4) in vec4 a_morph_2;
-layout(location = 5) in vec4 a_morph_3;
-layout(location = 6) in vec4 a_morph_4;
+// x, y, z position
+layout(location = 0) in vec3 position;
 
-layout(location = 7) in uint a_joint_1;
-layout(location = 8) in uint a_joint_2;
-layout(location = 9) in uint a_joint_3;
-layout(location = 10) in uint a_joint_4;
+// r, g, b, a color
+layout(location = 1) in vec4 color;
 
-layout(location = 11) in float a_weight_1;
-layout(location = 12) in float a_weight_2;
-layout(location = 13) in float a_weight_3;
-layout(location = 14) in float a_weight_4;
+// u, v texture coordinate
+layout(location = 2) in vec2 tex_coord;
 
+// 4 unsigned 32-bit integers for joints, which represent the index of the joint to use
+layout(location = 3) in uvec4 joints;
+
+// 4 f32's for weights, to be used with joints for vertex skinning animations
+layout(location = 4) in vec4 weights;
+
+// 3x4 matrix of morphs: each morph is an x, y, z coordinate
+layout(location = 5) in mat3x4 morphs;
+
+// VARIABLES TO PASS TO FRAGMENT SHADER
+
+// r, g, b, a, color to pass to fragment shader
 layout(location = 0) out vec4 v_color;
+
+// u, v texture coordinates to pass to fragment shader
 layout(location = 1) out vec2 v_tex_coord;
 
-// set = 1: for vertex shaders, set 1 is used for uniforms
+// UNIFORM
+
+// for vertex shaders, set 1 is used for uniforms
 layout(std140, set = 1, binding = 0) uniform UniformBlock {
     // float x_pos;
     // float y_pos;
@@ -35,30 +43,74 @@ layout(std140, set = 1, binding = 0) uniform UniformBlock {
     // If these uniform values are in a different order, they get messed up
     // Because there's padding around them to make them, and my rendering code isn't accounting for that
     // (Or something like that, I'm not entirely sure)
+
+    // the computed transform matrix
     mat4 transform_matrix;
+
+    // how much to apply the (up to 4) morphs
     vec4 morph_weights;
 
-    // uint morph_target_count;
-    // uint vertex_count;
-
     // Array of matrix transforms, one for each joint
-    mat4 joints[];
+    mat4 joint_matrices[600];
 };
 
-// TODO - remove this buffer, it's all in the vertices now
-// layout(std430, binding = 0) readonly buffer BufferBlock {
-//     vec4 morph_target[];
-// };
+// CODE
 
 void main()
 {
+    // Apply morph targets
+    vec3 position3 = position + morph_weights * morphs;
+
+    // Make position a vec4 instead of a vec3
+    vec4 position4 = vec4(position3.x, position3.y, position3.z, 1.0);
+
+    // Prep for vertex skinning
+    mat4 skin_matrix =
+        joint_matrices[joints.x] * weights.x +
+        joint_matrices[joints.y] * weights.y +
+        joint_matrices[joints.z] * weights.z +
+        joint_matrices[joints.w] * weights.w;
+
+    // Apply vertex skinning
+    position4 = position4 * skin_matrix;
+
+    // Apply transform matrix
+    position4 = position4 * transform_matrix;
+
+    // Create illusion of depth by dividing x and y by z
+    position4 = vec4(
+        4 * position4.x / (4 + position4.z),
+        4 * position4.y / (4 + position4.z),
+        position4.z,
+        position4.w
+    );
+
+    // Calculate depth value for depth testing
+    float depth = (1.0f / (position4.z + 1.1f) - 10.0f) / -10.0f;
+
+    // Pass (x, y) position and depth to fragment shader
+    gl_Position = vec4(
+        position4.x,
+        position4.y,
+        depth,
+        1.0f
+    );
+
+    // Pass vertex color to fragment shader
+    v_color = color;
+
+    // Pass texture coordinate to fragment shader
+    v_tex_coord = tex_coord;
+    
     // Apply the morph target
 
     // TODO - This code could probably be way more efficient.
     // Check how many morph target counts there are FIRST and then go down different branches.
     // Try to minimize how many if statements there are and minimize unnecessary calculations.
-    // I think it's better to have more code that isn't ran in all cases than to do extra work every time.
+    // Is it better to have more code that isn't ran in all cases than to do extra work every time?
+    // Or, is it better to have no conditionals? Not sure
 
+    /*
     vec4 morph_1;
     if (morph_target_count >= 1) {
         morph_1 = morph_target[gl_VertexIndex];
@@ -94,6 +146,7 @@ void main()
             a_position.z + morph_1.z * morph_weights[0] + morph_2.z * morph_weights[1] + morph_3.z * morph_weights[2] + morph_4.z * morph_weights[3],
             1.0
         );
+    */
 
     // vec4 a_position_morphed = vec4(
     //         a_position.x + morph_weights.x,
@@ -109,17 +162,17 @@ void main()
     //     );
 
     // Apply transformation from transformation matrix
-    vec4 a_position_transformed = vec4(a_position_morphed) * transform_matrix;
+    /* vec4 a_position_transformed = vec4(a_position_morphed) * transform_matrix; */
     // vec4 a_position_transformed = vec4(a_position, 1.0) * transform_matrix;
     // vec4 a_position_transformed = vec4(a_position, 1.0);
 
     // change the x and y values with the z value to create the illusion of distance/depth
-    vec4 a_position_projected = vec4(
+    /* vec4 a_position_projected = vec4(
             4 * a_position_transformed.x / (4 + a_position_transformed.z),
             4 * a_position_transformed.y / (4 + a_position_transformed.z),
             a_position_transformed.z,
             a_position_transformed.w
-        );
+        ); */
 
     // vec4 a_position_projected = a_position_transformed;
 
@@ -132,18 +185,18 @@ void main()
     // float one_over_far = 1.0f / 10.0f;
     // Depth = (1 / z - 1 / near) / (1 / far - 1 / near)
     // float depth = (one_over_z - one_over_near) / (one_over_far - one_over_near);
-    float depth = (1.0f / (a_position_projected.z + 1.1f) - 10.0f) / -10.0f;
+    /* float depth = (1.0f / (a_position_projected.z + 1.1f) - 10.0f) / -10.0f; */
 
-    gl_Position = vec4(
+    /* gl_Position = vec4(
             a_position_projected.x,
             a_position_projected.y,
             depth,
             1.0f
-        );
+        ); */
 
     // Pass vertex color to fragment shader
-    v_color = a_color;
+    /* v_color = color; */
 
     // Pass texture coordinate to fragment shader
-    v_tex_coord = a_tex_coord;
+    /* v_tex_coord = tex_coord; */
 }

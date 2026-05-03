@@ -32,13 +32,7 @@ struct Vertex {
     // vec2 Texture Coord
     u: c_float,
     v: c_float,
-    // morph targets
-    m1: [c_float; 4],
-    m2: [c_float; 4],
-    m3: [c_float; 4],
-    m4: [c_float; 4],
     // joints
-    // TODO - figure out if u16 is acceptable for the shader
     j1: c_uint,
     j2: c_uint,
     j3: c_uint,
@@ -48,15 +42,20 @@ struct Vertex {
     w2: c_float,
     w3: c_float,
     w4: c_float,
+    // morph targets
+    m1: [c_float; 3],
+    m2: [c_float; 3],
+    m3: [c_float; 3],
+    m4: [c_float; 3],
 }
 
 struct PrimitiveData {
     vertex_buffer: Buffer,
-    vertex_count: u32,
+    // vertex_count: u32,
     index_buffer: Buffer,
     index_count: u32,
-    morph_target_buffer: Option<Buffer>,
-    morph_target_count: u32,
+    // morph_target_buffer: Option<Buffer>,
+    // morph_target_count: u32,
 }
 
 struct MeshData {
@@ -101,8 +100,8 @@ struct ModelData<'a> {
 struct VertexUniformBuffer {
     transform_matrix: [[c_float; 4]; 4],
     morph_weights: [c_float; 4],
-    morph_target_count: c_uint,
-    vertex_count: c_uint,
+    // morph_target_count: c_uint,
+    // vertex_count: c_uint,
     joint_matrices: Vec<[[c_float; 4]; 4]>,
 }
 
@@ -151,14 +150,26 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     // Currently unused:
                     // reader.read_normals()
                     // reader.read_tangents()
-                    let joints_temp_vec = Vec::new();
+                    let mut joints_temp_vec = Vec::new();
                     if let Some(joints_reader) = reader.read_joints(0) {
                         for joint in joints_reader.into_u16() {
                             // println!("j: {:?}", joint);
-                            joints_temp_vec.push(joint);
+                            let joint_u32 = [
+                                u32::from(joint[0]),
+                                u32::from(joint[1]),
+                                u32::from(joint[2]),
+                                u32::from(joint[3]),
+                            ];
+                            joints_temp_vec.push(joint_u32);
                         }
                     }
-                    let weights_temp_vec = Vec::new();
+                    if joints_temp_vec.len() > 600 {
+                        println!("Uh oh I set up the shader to only accept 600 joints and this model has: {}", joints_temp_vec.len());
+                    }
+                    else {
+                        println!("This model has this many joints: {}", joints_temp_vec.len());
+                    }
+                    let mut weights_temp_vec = Vec::new();
                     if let Some(weights_reader) = reader.read_weights(0) {
                         for weight in weights_reader.into_f32() {
                             // println!("w: {:?}", weight);
@@ -169,14 +180,14 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     // let mut morph_positions_vector = Vec::new();
                     // let mut morph_positions_count: u32 = 0;
 
-                    let morph_targets_temp_vec = Vec::new();
+                    let mut morph_targets_temp_vec = Vec::new();
                     for morph_target in reader.read_morph_targets() {
                         // morph_target is (positions, normals, tangents) but each is optional
                         if let (Some(morph_positions), _normals, _tangents) = morph_target {
                             // Only looking at positions for now
                             // morph_positions_count += 1;
 
-                            let morph_position_temp_vec = Vec::new();
+                            let mut morph_position_temp_vec = Vec::new();
                             for morph_position in morph_positions {
                                 // morph_positions_vector.push(morph_position);
                                 morph_position_temp_vec.push(morph_position);
@@ -210,37 +221,37 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                             // Use morph positions from model data or use default value (0, 0, 0)
                             let morph_1 = {
                                 if let Some(morph_target_1) = morph_targets_temp_vec.get(0) {
-                                    morph_target_1.get(index).unwrap_or([0, 0, 0])
+                                    morph_target_1.get(index).unwrap_or(&[0f32, 0f32, 0f32])
                                 } else {
-                                    [0, 0, 0]
+                                    &[0f32, 0f32, 0f32]
                                 }
                             };
                             let morph_2 = {
                                 if let Some(morph_target_1) = morph_targets_temp_vec.get(1) {
-                                    morph_target_1.get(index).unwrap_or([0, 0, 0])
+                                    morph_target_1.get(index).unwrap_or(&[0f32, 0f32, 0f32])
                                 } else {
-                                    [0, 0, 0]
+                                    &[0f32, 0f32, 0f32]
                                 }
                             };
                             let morph_3 = {
                                 if let Some(morph_target_1) = morph_targets_temp_vec.get(2) {
-                                    morph_target_1.get(index).unwrap_or([0, 0, 0])
+                                    morph_target_1.get(index).unwrap_or(&[0f32, 0f32, 0f32])
                                 } else {
-                                    [0, 0, 0]
+                                    &[0f32, 0f32, 0f32]
                                 }
                             };
                             let morph_4 = {
                                 if let Some(morph_target_1) = morph_targets_temp_vec.get(3) {
-                                    morph_target_1.get(index).unwrap_or([0, 0, 0])
+                                    morph_target_1.get(index).unwrap_or(&[0f32, 0f32, 0f32])
                                 } else {
-                                    [0, 0, 0]
+                                    &[0f32, 0f32, 0f32]
                                 }
                             };
                             let joint = joints_temp_vec
                                 .get(index)
-                                .unwrap_or([0u32, 0u32, 0u32, 0u32]);
+                                .unwrap_or(&[0u32, 0u32, 0u32, 0u32]);
                             let weight =
-                                weights_temp_vec.get(index).unwrap_or([0.0, 0.0, 0.0, 0.0]);
+                                weights_temp_vec.get(index).unwrap_or(&[0.0, 0.0, 0.0, 0.0]);
                             vertices.push(Vertex {
                                 x: vertex_position[0],
                                 y: vertex_position[1],
@@ -251,10 +262,6 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                 a: vertex_color[3],
                                 u: texture_coordinate.0,
                                 v: texture_coordinate.1,
-                                m1: [morph_1[0], morph_1[1], morph_1[2], 0.0],
-                                m2: [morph_2[0], morph_2[1], morph_2[2], 0.0],
-                                m3: [morph_3[0], morph_3[1], morph_3[2], 0.0],
-                                m4: [morph_4[0], morph_4[1], morph_4[2], 0.0],
                                 j1: joint[0],
                                 j2: joint[1],
                                 j3: joint[2],
@@ -263,6 +270,10 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                 w2: weight[1],
                                 w3: weight[2],
                                 w4: weight[3],
+                                m1: *morph_1,
+                                m2: *morph_2,
+                                m3: *morph_3,
+                                m4: *morph_4,
                             });
                         }
                     }
@@ -280,13 +291,12 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     let primitive_indices_size = (indices.len() * size_of::<u32>()) as u32;
 
                     // How big is the morph target data to transfer
-                    let primitive_morph_target_size =
-                        (morph_positions_vector.len() * size_of::<[f32; 4]>()) as u32;
+                    // let primitive_morph_target_size =
+                    //     (morph_positions_vector.len() * size_of::<[f32; 4]>()) as u32;
 
                     // Determine which is larger
-                    let larger_size = primitive_vertices_size
-                        .max(primitive_indices_size)
-                        .max(primitive_morph_target_size);
+                    let larger_size = primitive_vertices_size.max(primitive_indices_size);
+                    // .max(primitive_morph_target_size);
 
                     // Create the transfer buffer, the vertices and the indices (and optionally the morph target) will both use this to upload to the gpu
                     let transfer_buffer = gpu_device
@@ -357,7 +367,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     copy_pass.upload_to_gpu_buffer(data_location, buffer_region, true);
 
                     // Optionally Create the morph target buffer if there is 1 or more morph targets for the primitive
-                    let morph_target_buffer: Option<Buffer> = if morph_positions_count > 0 {
+                    /* let morph_target_buffer: Option<Buffer> = if morph_positions_count > 0 {
                         let morph_target_buffer = gpu_device
                             .create_buffer()
                             .with_size(primitive_morph_target_size)
@@ -394,18 +404,18 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                         Some(morph_target_buffer)
                     } else {
                         None
-                    };
+                    }; */
 
                     // Release the index transfer buffer
                     drop(transfer_buffer);
 
                     PrimitiveData {
                         vertex_buffer: vertex_buffer,
-                        vertex_count: vertices.len() as u32,
+                        // vertex_count: vertices.len() as u32,
                         index_buffer: index_buffer,
                         index_count: indices.len() as u32,
-                        morph_target_buffer: morph_target_buffer,
-                        morph_target_count: morph_positions_count,
+                        // morph_target_buffer: morph_target_buffer,
+                        // morph_target_count: morph_positions_count,
                     }
                 })
                 .collect();
@@ -651,7 +661,7 @@ fn create_dummy_image_and_copy_to_gpu<'a>(gpu_device: &Device) -> ImageData<'a> 
     }
 }
 
-fn create_dummy_morph_buffer_and_upload_to_gpu(gpu_device: &Device) -> Buffer {
+/* fn create_dummy_morph_buffer_and_upload_to_gpu(gpu_device: &Device) -> Buffer {
     // Start a copy pass
     let copy_command_buffer = gpu_device.acquire_command_buffer().unwrap();
     let copy_pass = gpu_device.begin_copy_pass(&copy_command_buffer).unwrap();
@@ -702,7 +712,7 @@ fn create_dummy_morph_buffer_and_upload_to_gpu(gpu_device: &Device) -> Buffer {
     copy_command_buffer.submit().unwrap();
 
     morph_target_buffer
-}
+} */
 
 pub fn main() {
     // Initialize SDL3
@@ -924,7 +934,7 @@ pub fn main() {
     let dummy_image = create_dummy_image_and_copy_to_gpu(&gpu_device);
 
     // Put a dummy morph buffer into the gpu
-    let dummy_morph = create_dummy_morph_buffer_and_upload_to_gpu(&gpu_device);
+    // let dummy_morph = create_dummy_morph_buffer_and_upload_to_gpu(&gpu_device);
 
     // Done with gpu init
 
@@ -1539,8 +1549,9 @@ pub fn main() {
                             &VertexUniformBuffer {
                                 transform_matrix: multiplied_and_player_transform_matrix,
                                 morph_weights: morph_weights,
-                                morph_target_count: primitive_data.morph_target_count,
-                                vertex_count: primitive_data.vertex_count,
+                                // morph_target_count: primitive_data.morph_target_count,
+                                // vertex_count: primitive_data.vertex_count,
+                                joint_matrices: Vec::new(),
                             },
                         );
 
@@ -1588,14 +1599,14 @@ pub fn main() {
                         }
 
                         // Is there a way to not clone the buffer? Or does it not matter?
-                        if primitive_data.morph_target_buffer.is_some() {
-                            render_pass.bind_vertex_storage_buffers(
-                                0,
-                                &[primitive_data.morph_target_buffer.clone().unwrap()],
-                            );
-                        } else {
-                            render_pass.bind_vertex_storage_buffers(0, &[dummy_morph.clone()]);
-                        }
+                        // if primitive_data.morph_target_buffer.is_some() {
+                        //     render_pass.bind_vertex_storage_buffers(
+                        //         0,
+                        //         &[primitive_data.morph_target_buffer.clone().unwrap()],
+                        //     );
+                        // } else {
+                        //     render_pass.bind_vertex_storage_buffers(0, &[dummy_morph.clone()]);
+                        // }
 
                         // if let Some(morph_target_buffer) = primitive_data.morph_target_buffer {
                         //     // let buffer_bindings_morph = BufferBinding::new()
