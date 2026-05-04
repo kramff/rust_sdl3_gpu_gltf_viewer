@@ -14,6 +14,7 @@ use sdl3::libc::c_uint;
 use sdl3::mouse::MouseButton;
 use sdl3::pixels::Color;
 use sdl3::sys::gpu::*;
+use std::array;
 use std::time::Duration;
 
 // The vertex input layout
@@ -824,7 +825,22 @@ pub fn main() {
         .with_buffer_slot(0)
         .with_location(5)
         .with_format(sdl3::gpu::VertexElementFormat::Float3)
-        .with_offset(size_of::<f32>() as u32 * 13 + (size_of::<u32>() as u32 * 4)); // offset 9 f32's over (xyz, rgba, uv) and 4 u32's over (j1, j2, j3, j4)
+        .with_offset(size_of::<f32>() as u32 * 13 + (size_of::<u32>() as u32 * 4)); // offset 13 f32's over (xyz, rgba, uv, and w1 w2 w3 w4) and 4 u32's over (j1, j2, j3, j4)
+    let vertex_attribute6 = VertexAttribute::new()
+        .with_buffer_slot(0)
+        .with_location(6)
+        .with_format(sdl3::gpu::VertexElementFormat::Float3)
+        .with_offset(size_of::<f32>() as u32 * 16 + (size_of::<u32>() as u32 * 4)); // offset 9 f32's over (xyz, rgba, uv, and w1 w2 w3 w4, and m1xyz) and 4 u32's over (j1, j2, j3, j4)
+    let vertex_attribute7 = VertexAttribute::new()
+        .with_buffer_slot(0)
+        .with_location(7)
+        .with_format(sdl3::gpu::VertexElementFormat::Float3)
+        .with_offset(size_of::<f32>() as u32 * 19 + (size_of::<u32>() as u32 * 4)); // offset 9 f32's over (xyz, rgba, uv, and w1 w2 w3 w4, and m1xyz, m2xyz) and 4 u32's over (j1, j2, j3, j4)
+    let vertex_attribute8 = VertexAttribute::new()
+        .with_buffer_slot(0)
+        .with_location(8)
+        .with_format(sdl3::gpu::VertexElementFormat::Float3)
+        .with_offset(size_of::<f32>() as u32 * 22 + (size_of::<u32>() as u32 * 4)); // offset 9 f32's over (xyz, rgba, uv, and w1 w2 w3 w4, and m1xyz, m2xyz, m3xyz) and 4 u32's over (j1, j2, j3, j4)
 
     // Vertex input state (for the pipeline)
     let vertex_input_state = sdl3::gpu::VertexInputState::new()
@@ -836,6 +852,9 @@ pub fn main() {
             vertex_attribute3,
             vertex_attribute4,
             vertex_attribute5,
+            vertex_attribute6,
+            vertex_attribute7,
+            vertex_attribute8,
         ]);
 
     // Describe the color target (for the target info, which is for the pipeline)
@@ -987,7 +1006,7 @@ pub fn main() {
     'running: loop {
         game_ticks += 1;
         let game_seconds = (game_ticks as f32) / 60.0;
-        let game_seconds_modulo = game_seconds % 1.0;
+        let _game_seconds_modulo = game_seconds % 1.0;
         for event in event_pump.poll_iter() {
             imgui.handle_event(&event);
             match event {
@@ -1572,7 +1591,7 @@ pub fn main() {
                                 morph_weights: morph_weights,
                                 // morph_target_count: primitive_data.morph_target_count,
                                 // vertex_count: primitive_data.vertex_count,
-                                joint_matrices: Vec::new(),
+                                joint_matrices: get_vector_of_500_identity_matrix(),
                             },
                         );
 
@@ -1712,6 +1731,15 @@ const IDENTITY_MATRIX: [[f32; 4]; 4] = [
     [0.0, 0.0, 1.0, 0.0],
     [0.0, 0.0, 0.0, 1.0],
 ];
+
+fn get_vector_of_500_identity_matrix() -> Vec<[[f32; 4]; 4]> {
+    vec![IDENTITY_MATRIX].repeat(500)
+}
+
+// const ARRAY_OF_500_IDENTITY_MATRIX: [[[f32; 4]; 4]; 500] = array::repeat(IDENTITY_MATRIX);
+// (0..500)
+//    .map(|_| -> [[f32; 4]; 4] { IDENTITY_MATRIX })
+//    .collect();
 
 // fn matrix_rotate_around_x(a: f32) -> [[f32; 4]; 4] {
 //     // roll
