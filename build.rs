@@ -4,7 +4,8 @@ fn main() {
     Command::new("cmd")
         .args([
             "/C",
-            "glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv",
+            // "glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv",
+            "glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv -g -o0",
         ])
         .output()
         .expect("failed vertex shader");

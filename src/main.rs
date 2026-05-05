@@ -14,7 +14,6 @@ use sdl3::libc::c_uint;
 use sdl3::mouse::MouseButton;
 use sdl3::pixels::Color;
 use sdl3::sys::gpu::*;
-use std::array;
 use std::time::Duration;
 
 // The vertex input layout
@@ -1889,7 +1888,7 @@ fn quaternion_dot_product(a: [f32; 4], b: [f32; 4]) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use crate::{IDENTITY_MATRIX, multiply_matrices};
+    use crate::{IDENTITY_MATRIX, get_vector_of_500_identity_matrix, multiply_matrices};
 
     #[test]
     fn test_multiply_matrices_1() {
@@ -1897,5 +1896,19 @@ mod tests {
             multiply_matrices(IDENTITY_MATRIX.clone(), IDENTITY_MATRIX.clone()),
             IDENTITY_MATRIX
         );
+    }
+
+    #[test]
+    fn test_500_identity_matrices() {
+        let my_500_identity_matrices = get_vector_of_500_identity_matrix();
+        assert_eq!(my_500_identity_matrices.len(), 500);
+        assert_eq!(my_500_identity_matrices.get(0).unwrap(), &IDENTITY_MATRIX);
+        assert_eq!(my_500_identity_matrices.get(1).unwrap(), &IDENTITY_MATRIX);
+        assert_eq!(my_500_identity_matrices.get(2).unwrap(), &IDENTITY_MATRIX);
+        assert_eq!(my_500_identity_matrices.get(3).unwrap(), &IDENTITY_MATRIX);
+        assert_eq!(my_500_identity_matrices.get(4).unwrap(), &IDENTITY_MATRIX);
+        assert_eq!(my_500_identity_matrices.get(498).unwrap(), &IDENTITY_MATRIX);
+        assert_eq!(my_500_identity_matrices.get(499).unwrap(), &IDENTITY_MATRIX);
+        assert_eq!(my_500_identity_matrices.get(500), None);
     }
 }

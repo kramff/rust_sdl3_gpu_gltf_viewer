@@ -3,6 +3,9 @@
 // To compile:
 // glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv
 
+// To compile with souce code debugging enabled (doesn't seem to work...):
+// glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv -g -o0
+
 
 // VERTEX ATTRIBUTES
 
