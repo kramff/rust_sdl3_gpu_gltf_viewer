@@ -5,7 +5,7 @@ fn main() {
         .args([
             "/C",
             // "glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv",
-            "glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv -g -o0",
+            "glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv -g",
         ])
         .output()
         .expect("failed vertex shader");
