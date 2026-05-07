@@ -17,11 +17,11 @@ layout(location = 1) in vec4 color;
 // u, v texture coordinate
 layout(location = 2) in vec2 tex_coord;
 
-// 4 unsigned 32-bit integers for joints, which represent the index of the joint to use
-layout(location = 3) in uvec4 joints;
-
 // 4 f32's for weights, to be used with joints for vertex skinning animations
-layout(location = 4) in vec4 weights;
+layout(location = 3) in vec4 weights;
+
+// 4 unsigned 32-bit integers for joints, which represent the index of the joint to use
+layout(location = 4) in uvec4 joints;
 
 // 4x4 matrix of morphs: each morph is an x, y, z coordinate (with an extra 4th to avoid issues possibly)
 // trying with 4 vectors
