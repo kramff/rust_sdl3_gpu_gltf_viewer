@@ -6,7 +6,6 @@
 // To compile with souce code debugging enabled (doesn't seem to work...):
 // glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv -g
 
-
 // VERTEX ATTRIBUTES
 
 // x, y, z position
@@ -24,9 +23,13 @@ layout(location = 3) in uvec4 joints;
 // 4 f32's for weights, to be used with joints for vertex skinning animations
 layout(location = 4) in vec4 weights;
 
-// 3x4 matrix of morphs: each morph is an x, y, z coordinate
-layout(location = 5) in mat3x4 morphs;
-
+// 4x4 matrix of morphs: each morph is an x, y, z coordinate (with an extra 4th to avoid issues possibly)
+// trying with 4 vectors
+// layout(location = 5) in mat4x4 morphs;
+layout(location = 5) in vec4 morphs0;
+layout(location = 6) in vec4 morphs1;
+layout(location = 7) in vec4 morphs2;
+layout(location = 8) in vec4 morphs3;
 
 // VARIABLES TO PASS TO FRAGMENT SHADER
 
@@ -56,15 +59,24 @@ layout(std140, set = 1, binding = 0) uniform UniformBlock {
     vec4 morph_weights;
 
     // Array of matrix transforms, one for each joint
-    mat4 joint_matrices[500];
+    // mat4 joint_matrices[500];
+};
+
+// STORAGE BUFFER FOR JOINT MATRICES
+
+layout(std430, binding = 0) readonly buffer JointMatricesBlock {
+    // Array of joint matrices, each is a 4x4 transform matrix calculated at runtime and passed every frame to the gpu
+    mat4 joint_matrices[];
 };
 
 // CODE
 
 void main()
 {
+    mat4x4 morphs = mat4x4(morphs0, morphs1, morphs2, morphs3);
     // Apply morph targets
-    vec3 position3 = position + morph_weights * morphs;
+    vec4 morph_positions = morph_weights * morphs;
+    vec3 position3 = position + morph_positions.xyz;
 
     // Make position a vec4 instead of a vec3
     vec4 position4 = vec4(position3.x, position3.y, position3.z, 1.0);
@@ -72,9 +84,9 @@ void main()
     // Prep for vertex skinning
     mat4 skin_matrix =
         joint_matrices[joints.x] * weights.x +
-        joint_matrices[joints.y] * weights.y +
-        joint_matrices[joints.z] * weights.z +
-        joint_matrices[joints.w] * weights.w;
+            joint_matrices[joints.y] * weights.y +
+            joint_matrices[joints.z] * weights.z +
+            joint_matrices[joints.w] * weights.w;
 
     // Apply vertex skinning
     position4 = position4 * skin_matrix;
@@ -84,29 +96,29 @@ void main()
 
     // Create illusion of depth by dividing x and y by z
     position4 = vec4(
-        4 * position4.x / (4 + position4.z),
-        4 * position4.y / (4 + position4.z),
-        position4.z,
-        position4.w
-    );
+            4 * position4.x / (4 + position4.z),
+            4 * position4.y / (4 + position4.z),
+            position4.z,
+            position4.w
+        );
 
     // Calculate depth value for depth testing
     float depth = (1.0f / (position4.z + 1.1f) - 10.0f) / -10.0f;
 
     // Pass (x, y) position and depth to fragment shader
     gl_Position = vec4(
-        position4.x,
-        position4.y,
-        depth,
-        1.0f
-    );
+            position4.x,
+            position4.y,
+            depth,
+            1.0f
+        );
 
     // Pass vertex color to fragment shader
     v_color = color;
 
     // Pass texture coordinate to fragment shader
     v_tex_coord = tex_coord;
-    
+
     // Apply the morph target
 
     // TODO - This code could probably be way more efficient.
@@ -116,42 +128,42 @@ void main()
     // Or, is it better to have no conditionals? Not sure
 
     /*
-    vec4 morph_1;
-    if (morph_target_count >= 1) {
-        morph_1 = morph_target[gl_VertexIndex];
-    }
-    else {
-        morph_1 = vec4(0.0, 0.0, 0.0, 0.0);
-    }
-    vec4 morph_2;
-    if (morph_target_count >= 2) {
-        morph_2 = morph_target[vertex_count + gl_VertexIndex];
-    }
-    else {
-        morph_2 = vec4(0.0, 0.0, 0.0, 0.0);
-    }
-    vec4 morph_3;
-    if (morph_target_count >= 3) {
-        morph_3 = morph_target[(2 * vertex_count) + gl_VertexIndex];
-    }
-    else {
-        morph_3 = vec4(0.0, 0.0, 0.0, 0.0);
-    }
-    vec4 morph_4;
-    if (morph_target_count >= 4) {
-        morph_4 = morph_target[(3 * vertex_count) + gl_VertexIndex];
-    }
-    else {
-        morph_4 = vec4(0.0, 0.0, 0.0, 0.0);
-    }
-    // This is doing so much extra work especially if there are no morph weights being used.
-    vec4 a_position_morphed = vec4(
-            a_position.x + morph_1.x * morph_weights[0] + morph_2.x * morph_weights[1] + morph_3.x * morph_weights[2] + morph_4.x * morph_weights[3],
-            a_position.y + morph_1.y * morph_weights[0] + morph_2.y * morph_weights[1] + morph_3.y * morph_weights[2] + morph_4.y * morph_weights[3],
-            a_position.z + morph_1.z * morph_weights[0] + morph_2.z * morph_weights[1] + morph_3.z * morph_weights[2] + morph_4.z * morph_weights[3],
-            1.0
-        );
-    */
+        vec4 morph_1;
+        if (morph_target_count >= 1) {
+            morph_1 = morph_target[gl_VertexIndex];
+        }
+        else {
+            morph_1 = vec4(0.0, 0.0, 0.0, 0.0);
+        }
+        vec4 morph_2;
+        if (morph_target_count >= 2) {
+            morph_2 = morph_target[vertex_count + gl_VertexIndex];
+        }
+        else {
+            morph_2 = vec4(0.0, 0.0, 0.0, 0.0);
+        }
+        vec4 morph_3;
+        if (morph_target_count >= 3) {
+            morph_3 = morph_target[(2 * vertex_count) + gl_VertexIndex];
+        }
+        else {
+            morph_3 = vec4(0.0, 0.0, 0.0, 0.0);
+        }
+        vec4 morph_4;
+        if (morph_target_count >= 4) {
+            morph_4 = morph_target[(3 * vertex_count) + gl_VertexIndex];
+        }
+        else {
+            morph_4 = vec4(0.0, 0.0, 0.0, 0.0);
+        }
+        // This is doing so much extra work especially if there are no morph weights being used.
+        vec4 a_position_morphed = vec4(
+                a_position.x + morph_1.x * morph_weights[0] + morph_2.x * morph_weights[1] + morph_3.x * morph_weights[2] + morph_4.x * morph_weights[3],
+                a_position.y + morph_1.y * morph_weights[0] + morph_2.y * morph_weights[1] + morph_3.y * morph_weights[2] + morph_4.y * morph_weights[3],
+                a_position.z + morph_1.z * morph_weights[0] + morph_2.z * morph_weights[1] + morph_3.z * morph_weights[2] + morph_4.z * morph_weights[3],
+                1.0
+            );
+        */
 
     // vec4 a_position_morphed = vec4(
     //         a_position.x + morph_weights.x,
@@ -173,11 +185,11 @@ void main()
 
     // change the x and y values with the z value to create the illusion of distance/depth
     /* vec4 a_position_projected = vec4(
-            4 * a_position_transformed.x / (4 + a_position_transformed.z),
-            4 * a_position_transformed.y / (4 + a_position_transformed.z),
-            a_position_transformed.z,
-            a_position_transformed.w
-        ); */
+                4 * a_position_transformed.x / (4 + a_position_transformed.z),
+                4 * a_position_transformed.y / (4 + a_position_transformed.z),
+                a_position_transformed.z,
+                a_position_transformed.w
+            ); */
 
     // vec4 a_position_projected = a_position_transformed;
 
@@ -193,11 +205,11 @@ void main()
     /* float depth = (1.0f / (a_position_projected.z + 1.1f) - 10.0f) / -10.0f; */
 
     /* gl_Position = vec4(
-            a_position_projected.x,
-            a_position_projected.y,
-            depth,
-            1.0f
-        ); */
+                a_position_projected.x,
+                a_position_projected.y,
+                depth,
+                1.0f
+            ); */
 
     // Pass vertex color to fragment shader
     /* v_color = color; */

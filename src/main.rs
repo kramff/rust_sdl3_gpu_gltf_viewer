@@ -14,11 +14,12 @@ use sdl3::libc::c_uint;
 use sdl3::mouse::MouseButton;
 use sdl3::pixels::Color;
 use sdl3::sys::gpu::*;
+use std::array;
 use std::time::Duration;
 
 // The vertex input layout
 #[allow(dead_code)] // Compiler doesn't see that the code is used to pass info to the gpu
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct Vertex {
     // vec3 Position
     x: c_float,
@@ -43,10 +44,10 @@ struct Vertex {
     w3: c_float,
     w4: c_float,
     // morph targets
-    m1: [c_float; 3],
-    m2: [c_float; 3],
-    m3: [c_float; 3],
-    m4: [c_float; 3],
+    m1: [c_float; 4],
+    m2: [c_float; 4],
+    m3: [c_float; 4],
+    m4: [c_float; 4],
 }
 
 struct PrimitiveData {
@@ -102,7 +103,8 @@ struct VertexUniformBuffer {
     morph_weights: [c_float; 4],
     // morph_target_count: c_uint,
     // vertex_count: c_uint,
-    joint_matrices: Vec<[[c_float; 4]; 4]>,
+    // joint_matrices: Vec<[[c_float; 4]; 4]>,
+    joint_matrices: [[[c_float; 4]; 4]; 500],
 }
 
 fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> ModelData<'a> {
@@ -220,6 +222,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                     &[0f32, 0f32, 0f32]
                                 }
                             };
+                            let morph_1 = [morph_1[0], morph_1[1], morph_1[2], 0f32];
                             let morph_2 = {
                                 if let Some(morph_target_1) = morph_targets_temp_vec.get(1) {
                                     morph_target_1.get(index).unwrap_or(&[0f32, 0f32, 0f32])
@@ -227,6 +230,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                     &[0f32, 0f32, 0f32]
                                 }
                             };
+                            let morph_2 = [morph_2[0], morph_2[1], morph_2[2], 0f32];
                             let morph_3 = {
                                 if let Some(morph_target_1) = morph_targets_temp_vec.get(2) {
                                     morph_target_1.get(index).unwrap_or(&[0f32, 0f32, 0f32])
@@ -234,6 +238,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                     &[0f32, 0f32, 0f32]
                                 }
                             };
+                            let morph_3 = [morph_3[0], morph_3[1], morph_3[2], 0f32];
                             let morph_4 = {
                                 if let Some(morph_target_1) = morph_targets_temp_vec.get(3) {
                                     morph_target_1.get(index).unwrap_or(&[0f32, 0f32, 0f32])
@@ -241,6 +246,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                     &[0f32, 0f32, 0f32]
                                 }
                             };
+                            let morph_4 = [morph_4[0], morph_4[1], morph_4[2], 0f32];
                             let joint = joints_temp_vec
                                 .get(index)
                                 .unwrap_or(&[0u32, 0u32, 0u32, 0u32]);
@@ -264,11 +270,14 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                 w2: weight[1],
                                 w3: weight[2],
                                 w4: weight[3],
-                                m1: *morph_1,
-                                m2: *morph_2,
-                                m3: *morph_3,
-                                m4: *morph_4,
+                                m1: morph_1,
+                                m2: morph_2,
+                                m3: morph_3,
+                                m4: morph_4,
                             });
+                            if vertices.len() == 1 {
+                                dbg!(vertices.get(0).unwrap());
+                            }
                         }
                     }
 
@@ -790,56 +799,67 @@ pub fn main() {
         .with_location(0)
         .with_format(sdl3::gpu::VertexElementFormat::Float3)
         .with_offset(0);
+    let mut vertex_attribute_offset: u32 = size_of::<f32>() as u32 * 3;
 
     // Vertex attribute for color. a_color (for the vertex input state, which is for the pipeline)
     let vertex_attribute1 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(1)
         .with_format(sdl3::gpu::VertexElementFormat::Float4)
-        .with_offset(size_of::<f32>() as u32 * 3); //offset 3 f32's over to pick (xyz)
+        .with_offset(vertex_attribute_offset);
+    vertex_attribute_offset += size_of::<f32>() as u32 * 4;
 
     // Vertex attribute for texture coordinate. a_tex_coord (for the vertex input state, which is for the pipeline)
     let vertex_attribute2 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(2)
         .with_format(sdl3::gpu::VertexElementFormat::Float2)
-        .with_offset(size_of::<f32>() as u32 * 7); // offset 7 f32's over (xyz, rgba)
+        .with_offset(vertex_attribute_offset);
+    vertex_attribute_offset += size_of::<f32>() as u32 * 2;
 
-    // Joints: 4 unsigned 32-bit integers
+    // Weights: 4 f32's (for vertex skinning)
     let vertex_attribute3 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(3)
-        .with_format(sdl3::gpu::VertexElementFormat::Uint4)
-        .with_offset(size_of::<f32>() as u32 * 9); // offset 9 f32's over (xyz, rgba, uv)
+        .with_format(sdl3::gpu::VertexElementFormat::Float4)
+        .with_offset(vertex_attribute_offset);
+    vertex_attribute_offset += size_of::<f32>() as u32 * 4;
 
-    // Weights: 4 f32's
+    // Joints: 4 unsigned 32-bit integers (for vertex skinning)
     let vertex_attribute4 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(4)
-        .with_format(sdl3::gpu::VertexElementFormat::Float4)
-        .with_offset(size_of::<f32>() as u32 * 9 + (size_of::<u32>() as u32 * 4)); // offset 9 f32's over (xyz, rgba, uv) and 4 u32's over (j1, j2, j3, j4)
+        .with_format(sdl3::gpu::VertexElementFormat::Uint4)
+        .with_offset(vertex_attribute_offset);
+    vertex_attribute_offset += size_of::<u32>() as u32 * 4;
 
-    // Morphs: 3x4 matrix of f32's
+    // Morphs: 4x4 matrix of f32's (made out of 4 vec4's)
     let vertex_attribute5 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(5)
-        .with_format(sdl3::gpu::VertexElementFormat::Float3)
-        .with_offset(size_of::<f32>() as u32 * 13 + (size_of::<u32>() as u32 * 4)); // offset 13 f32's over (xyz, rgba, uv, and w1 w2 w3 w4) and 4 u32's over (j1, j2, j3, j4)
+        .with_format(sdl3::gpu::VertexElementFormat::Float4)
+        .with_offset(vertex_attribute_offset);
+    vertex_attribute_offset += size_of::<f32>() as u32 * 4;
+
     let vertex_attribute6 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(6)
-        .with_format(sdl3::gpu::VertexElementFormat::Float3)
-        .with_offset(size_of::<f32>() as u32 * 16 + (size_of::<u32>() as u32 * 4)); // offset 9 f32's over (xyz, rgba, uv, and w1 w2 w3 w4, and m1xyz) and 4 u32's over (j1, j2, j3, j4)
+        .with_format(sdl3::gpu::VertexElementFormat::Float4)
+        .with_offset(vertex_attribute_offset);
+    vertex_attribute_offset += size_of::<f32>() as u32 * 4;
+
     let vertex_attribute7 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(7)
-        .with_format(sdl3::gpu::VertexElementFormat::Float3)
-        .with_offset(size_of::<f32>() as u32 * 19 + (size_of::<u32>() as u32 * 4)); // offset 9 f32's over (xyz, rgba, uv, and w1 w2 w3 w4, and m1xyz, m2xyz) and 4 u32's over (j1, j2, j3, j4)
+        .with_format(sdl3::gpu::VertexElementFormat::Float4)
+        .with_offset(vertex_attribute_offset);
+    vertex_attribute_offset += size_of::<f32>() as u32 * 4;
+
     let vertex_attribute8 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(8)
-        .with_format(sdl3::gpu::VertexElementFormat::Float3)
-        .with_offset(size_of::<f32>() as u32 * 22 + (size_of::<u32>() as u32 * 4)); // offset 9 f32's over (xyz, rgba, uv, and w1 w2 w3 w4, and m1xyz, m2xyz, m3xyz) and 4 u32's over (j1, j2, j3, j4)
+        .with_format(sdl3::gpu::VertexElementFormat::Float4)
+        .with_offset(vertex_attribute_offset);
 
     // Vertex input state (for the pipeline)
     let vertex_input_state = sdl3::gpu::VertexInputState::new()
@@ -1590,7 +1610,8 @@ pub fn main() {
                                 morph_weights: morph_weights,
                                 // morph_target_count: primitive_data.morph_target_count,
                                 // vertex_count: primitive_data.vertex_count,
-                                joint_matrices: get_vector_of_500_identity_matrix(),
+                                // joint_matrices: get_vector_of_500_identity_matrix(),
+                                joint_matrices: get_array_of_500_identity_matrix(),
                             },
                         );
 
@@ -1733,6 +1754,10 @@ const IDENTITY_MATRIX: [[f32; 4]; 4] = [
 
 fn get_vector_of_500_identity_matrix() -> Vec<[[f32; 4]; 4]> {
     vec![IDENTITY_MATRIX].repeat(500)
+}
+
+fn get_array_of_500_identity_matrix() -> [[[f32; 4]; 4]; 500] {
+    array::from_fn(|_| IDENTITY_MATRIX)
 }
 
 // const ARRAY_OF_500_IDENTITY_MATRIX: [[[f32; 4]; 4]; 500] = array::repeat(IDENTITY_MATRIX);
