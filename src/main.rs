@@ -87,7 +87,7 @@ struct AnimationChannelData {
     // interpolation: Interpolation,
     inputs: Vec<f32>,
     outputs: Vec<AnimationOutput>,
-    channel_index: usize,
+    // channel_index: usize,
 }
 
 struct ModelData<'a> {
@@ -104,7 +104,7 @@ struct VertexUniformBuffer {
     // morph_target_count: c_uint,
     // vertex_count: c_uint,
     // joint_matrices: Vec<[[c_float; 4]; 4]>,
-    joint_matrices: [[[c_float; 4]; 4]; 500],
+    // joint_matrices: [[[c_float; 4]; 4]; 500],
 }
 
 fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> ModelData<'a> {
@@ -275,9 +275,9 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                 m3: morph_3,
                                 m4: morph_4,
                             });
-                            if vertices.len() == 1 {
-                                dbg!(vertices.get(0).unwrap());
-                            }
+                            // if vertices.len() == 1 {
+                            //     dbg!(vertices.get(0).unwrap());
+                            // }
                         }
                     }
 
@@ -577,7 +577,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                         // interpolation: channel.sampler().interpolation(),
                         inputs: animation_inputs,
                         outputs: animation_outputs,
-                        channel_index: channel.index(),
+                        // channel_index: channel.index(),
                     }
                 })
                 .collect();
@@ -717,6 +717,57 @@ fn create_dummy_image_and_copy_to_gpu<'a>(gpu_device: &Device) -> ImageData<'a> 
     morph_target_buffer
 } */
 
+fn create_joint_matrix_buffer_and_upload_to_gpu(gpu_device: &Device) -> Buffer {
+    // Start a copy pass
+    let copy_command_buffer = gpu_device.acquire_command_buffer().unwrap();
+    let copy_pass = gpu_device.begin_copy_pass(&copy_command_buffer).unwrap();
+
+    let buffer_size = size_of::<f32>() as u32 * 8000; // 4x4 matrix * 500 entries
+    let morph_target_buffer = gpu_device
+        .create_buffer()
+        .with_size(buffer_size)
+        // Not sure on the buffer usage flag? I think "Graphics Storage Read" makes sense...
+        .with_usage(BufferUsageFlags::GRAPHICS_STORAGE_READ)
+        .build()
+        .unwrap();
+
+    let transfer_buffer = gpu_device
+        .create_transfer_buffer()
+        .with_size(buffer_size)
+        .with_usage(TransferBufferUsage::UPLOAD)
+        .build()
+        .unwrap();
+
+    // Fill the transfer buffer with data
+    let mut buffer_mem_map = transfer_buffer.map(&gpu_device, true);
+    let buffer_mem_map_mem_mut: &mut [[[f32; 4]; 4]] = buffer_mem_map.mem_mut();
+    for index in 0..499 {
+        let transfer_value: [[f32; 4]; 4] = IDENTITY_MATRIX;
+        buffer_mem_map_mem_mut[index] = transfer_value;
+    }
+    buffer_mem_map.unmap();
+
+    // Set the location of the data (it's at the start of the transfer buffer)
+    let data_location = TransferBufferLocation::default()
+        .with_transfer_buffer(&transfer_buffer)
+        .with_offset(0u32);
+
+    // Set what region of the buffer to transfer (the size of the indices data)
+    let buffer_region = BufferRegion::default()
+        .with_buffer(&morph_target_buffer)
+        .with_size(4)
+        .with_offset(0u32);
+
+    // Upload the data
+    copy_pass.upload_to_gpu_buffer(data_location, buffer_region, true);
+
+    // End the copy pass
+    gpu_device.end_copy_pass(copy_pass);
+    copy_command_buffer.submit().unwrap();
+
+    morph_target_buffer
+}
+
 pub fn main() {
     // Initialize SDL3
     let mut sdl_context = sdl3::init().unwrap();
@@ -758,7 +809,7 @@ pub fn main() {
         )
         .with_entrypoint(c"main")
         .with_samplers(0)
-        .with_storage_buffers(0)
+        .with_storage_buffers(1)
         .with_storage_textures(0)
         .with_uniform_buffers(1)
         .build()
@@ -991,6 +1042,8 @@ pub fn main() {
 
     // Put a dummy image into the gpu
     let dummy_image = create_dummy_image_and_copy_to_gpu(&gpu_device);
+
+    let joint_matrix_buffer = create_joint_matrix_buffer_and_upload_to_gpu(&gpu_device);
 
     // Put a dummy morph buffer into the gpu
     // let dummy_morph = create_dummy_morph_buffer_and_upload_to_gpu(&gpu_device);
@@ -1611,7 +1664,7 @@ pub fn main() {
                                 // morph_target_count: primitive_data.morph_target_count,
                                 // vertex_count: primitive_data.vertex_count,
                                 // joint_matrices: get_vector_of_500_identity_matrix(),
-                                joint_matrices: get_array_of_500_identity_matrix(),
+                                // joint_matrices: get_array_of_500_identity_matrix(),
                             },
                         );
 
@@ -1675,6 +1728,9 @@ pub fn main() {
                         //     // render_pass.bind_vertex_storage_buffers(0, &[buffer_bindings_morph]);
                         //     render_pass.bind_vertex_storage_buffers(0, &[morph_target_buffer]);
                         // }
+
+                        // Bind joint matrix buffer
+                        render_pass.bind_vertex_storage_buffers(0, &[joint_matrix_buffer.clone()]);
 
                         // Issue the draw call using the indexes and other bound data
                         render_pass.draw_indexed_primitives(primitive_data.index_count, 1, 0, 0, 0);
