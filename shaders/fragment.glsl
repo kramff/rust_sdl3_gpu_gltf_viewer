@@ -3,8 +3,12 @@
 // To compile:
 // glslc -fshader-stage=fragment shaders/fragment.glsl -o shaders/fragment.spv
 
-layout (location = 0) in vec4 v_color;
-layout (location = 1) in vec2 v_tex_coord;
+/* layout (location = 0) in vec4 v_color; */
+
+// In
+layout (location = 0) in vec2 v_tex_coord;
+
+// Out
 layout (location = 0) out vec4 FragColor;
 
 // layout(std140, set = 3, binding = 0) uniform UniformBlock {

@@ -26,28 +26,28 @@ struct Vertex {
     y: c_float,
     z: c_float,
     // vec4 Color
-    r: c_float,
+    /* r: c_float,
     g: c_float,
     b: c_float,
-    a: c_float,
+    a: c_float, */
     // vec2 Texture Coord
     u: c_float,
     v: c_float,
-    // joints
-    j1: c_uint,
-    j2: c_uint,
-    j3: c_uint,
-    j4: c_uint,
     // weights
     w1: c_float,
     w2: c_float,
     w3: c_float,
     w4: c_float,
+    // joints
+    j1: c_uint,
+    j2: c_uint,
+    j3: c_uint,
+    j4: c_uint,
     // morph targets
-    m1: [c_float; 4],
+    /* m1: [c_float; 4],
     m2: [c_float; 4],
     m3: [c_float; 4],
-    m4: [c_float; 4],
+    m4: [c_float; 4], */
 }
 
 struct PrimitiveData {
@@ -100,7 +100,7 @@ struct ModelData<'a> {
 #[allow(dead_code)] // Compiler doesn't see that the code is used to pass info to the gpu
 struct VertexUniformBuffer {
     transform_matrix: [[c_float; 4]; 4],
-    morph_weights: [c_float; 4],
+    /* morph_weights: [c_float; 4], */
     // morph_target_count: c_uint,
     // vertex_count: c_uint,
     // joint_matrices: Vec<[[c_float; 4]; 4]>,
@@ -116,7 +116,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
     let copy_pass = gpu_device.begin_copy_pass(&copy_command_buffer).unwrap();
 
     for skin in document.skins() {
-        // println!("skin name: {}", skin.name().unwrap_or("no name"));
+        println!("skin name: {}", skin.name().unwrap_or("no name"));
         let skin_reader = skin.reader(|buffer| Some(&buffers[buffer.index()]));
         if let Some(inverse_bind_matrices) = skin_reader.read_inverse_bind_matrices() {
             println!(
@@ -129,6 +129,13 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
         } else {
             println!("Skeleton is root node");
         }
+        // Get the skeleton nodes used as joints for this skin
+        let mut temp_joint_vec: Vec<usize> = Vec::new();
+        for joint in skin.joints() {
+            // each joint is a node
+            temp_joint_vec.push(joint.index());
+        }
+        dbg!(temp_joint_vec);
     }
 
     let meshes_vec = document
@@ -163,6 +170,9 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                 u32::from(joint[3]),
                             ];
                             joints_temp_vec.push(joint_u32);
+                            // if joint.len() > 4 {
+                            //     println!("Wow! This vertex has {} joints.", joint.len());
+                            // }
                         }
                     }
                     let mut weights_temp_vec = Vec::new();
@@ -256,24 +266,24 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                 x: vertex_position[0],
                                 y: vertex_position[1],
                                 z: vertex_position[2],
-                                r: vertex_color[0],
+                                /* r: vertex_color[0],
                                 g: vertex_color[1],
                                 b: vertex_color[2],
-                                a: vertex_color[3],
+                                a: vertex_color[3], */
                                 u: texture_coordinate.0,
                                 v: texture_coordinate.1,
-                                j1: joint[0],
-                                j2: joint[1],
-                                j3: joint[2],
-                                j4: joint[3],
                                 w1: weight[0],
                                 w2: weight[1],
                                 w3: weight[2],
                                 w4: weight[3],
-                                m1: morph_1,
+                                j1: joint[0],
+                                j2: joint[1],
+                                j3: joint[2],
+                                j4: joint[3],
+                                /* m1: morph_1,
                                 m2: morph_2,
                                 m3: morph_3,
-                                m4: morph_4,
+                                m4: morph_4, */
                             });
                             // if vertices.len() == 1 {
                             //     dbg!(vertices.get(0).unwrap());
@@ -743,6 +753,12 @@ fn create_joint_matrix_buffer_and_upload_to_gpu(gpu_device: &Device) -> Buffer {
     let buffer_mem_map_mem_mut: &mut [[[f32; 4]; 4]] = buffer_mem_map.mem_mut();
     for index in 0..499 {
         let transfer_value: [[f32; 4]; 4] = IDENTITY_MATRIX;
+        // let transfer_value: [[f32; 4]; 4] = [
+        //     [1.0, index as f32 * 0.1, 0.0, 0.0],
+        //     [0.0, 1.0, 0.0, 0.0],
+        //     [0.0, 0.0, 1.0, 0.0],
+        //     [0.0, 0.0, 0.0, 1.0],
+        // ];
         buffer_mem_map_mem_mut[index] = transfer_value;
     }
     buffer_mem_map.unmap();
@@ -755,7 +771,7 @@ fn create_joint_matrix_buffer_and_upload_to_gpu(gpu_device: &Device) -> Buffer {
     // Set what region of the buffer to transfer (the size of the indices data)
     let buffer_region = BufferRegion::default()
         .with_buffer(&morph_target_buffer)
-        .with_size(4)
+        .with_size(buffer_size)
         .with_offset(0u32);
 
     // Upload the data
@@ -853,17 +869,17 @@ pub fn main() {
     let mut vertex_attribute_offset: u32 = size_of::<f32>() as u32 * 3;
 
     // Vertex attribute for color. a_color (for the vertex input state, which is for the pipeline)
-    let vertex_attribute1 = VertexAttribute::new()
+    /* let vertex_attribute1 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(1)
         .with_format(sdl3::gpu::VertexElementFormat::Float4)
         .with_offset(vertex_attribute_offset);
-    vertex_attribute_offset += size_of::<f32>() as u32 * 4;
+    vertex_attribute_offset += size_of::<f32>() as u32 * 4; */
 
     // Vertex attribute for texture coordinate. a_tex_coord (for the vertex input state, which is for the pipeline)
     let vertex_attribute2 = VertexAttribute::new()
         .with_buffer_slot(0)
-        .with_location(2)
+        .with_location(1)
         .with_format(sdl3::gpu::VertexElementFormat::Float2)
         .with_offset(vertex_attribute_offset);
     vertex_attribute_offset += size_of::<f32>() as u32 * 2;
@@ -871,7 +887,7 @@ pub fn main() {
     // Weights: 4 f32's (for vertex skinning)
     let vertex_attribute3 = VertexAttribute::new()
         .with_buffer_slot(0)
-        .with_location(3)
+        .with_location(2)
         .with_format(sdl3::gpu::VertexElementFormat::Float4)
         .with_offset(vertex_attribute_offset);
     vertex_attribute_offset += size_of::<f32>() as u32 * 4;
@@ -879,52 +895,52 @@ pub fn main() {
     // Joints: 4 unsigned 32-bit integers (for vertex skinning)
     let vertex_attribute4 = VertexAttribute::new()
         .with_buffer_slot(0)
-        .with_location(4)
+        .with_location(3)
         .with_format(sdl3::gpu::VertexElementFormat::Uint4)
         .with_offset(vertex_attribute_offset);
-    vertex_attribute_offset += size_of::<u32>() as u32 * 4;
+    // vertex_attribute_offset += size_of::<u32>() as u32 * 4;
 
     // Morphs: 4x4 matrix of f32's (made out of 4 vec4's)
-    let vertex_attribute5 = VertexAttribute::new()
+    /* let vertex_attribute5 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(5)
         .with_format(sdl3::gpu::VertexElementFormat::Float4)
         .with_offset(vertex_attribute_offset);
-    vertex_attribute_offset += size_of::<f32>() as u32 * 4;
+    vertex_attribute_offset += size_of::<f32>() as u32 * 4; */
 
-    let vertex_attribute6 = VertexAttribute::new()
+    /* let vertex_attribute6 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(6)
         .with_format(sdl3::gpu::VertexElementFormat::Float4)
         .with_offset(vertex_attribute_offset);
-    vertex_attribute_offset += size_of::<f32>() as u32 * 4;
+    vertex_attribute_offset += size_of::<f32>() as u32 * 4; */
 
-    let vertex_attribute7 = VertexAttribute::new()
+    /* let vertex_attribute7 = VertexAttribute::new()
         .with_buffer_slot(0)
         .with_location(7)
         .with_format(sdl3::gpu::VertexElementFormat::Float4)
         .with_offset(vertex_attribute_offset);
-    vertex_attribute_offset += size_of::<f32>() as u32 * 4;
+    vertex_attribute_offset += size_of::<f32>() as u32 * 4; */
 
-    let vertex_attribute8 = VertexAttribute::new()
-        .with_buffer_slot(0)
-        .with_location(8)
-        .with_format(sdl3::gpu::VertexElementFormat::Float4)
-        .with_offset(vertex_attribute_offset);
+    /* let vertex_attribute8 = VertexAttribute::new()
+    .with_buffer_slot(0)
+    .with_location(8)
+    .with_format(sdl3::gpu::VertexElementFormat::Float4)
+    .with_offset(vertex_attribute_offset); */
 
     // Vertex input state (for the pipeline)
     let vertex_input_state = sdl3::gpu::VertexInputState::new()
         .with_vertex_buffer_descriptions(&[vertex_buffer_description])
         .with_vertex_attributes(&[
             vertex_attribute0,
-            vertex_attribute1,
+            /* vertex_attribute1, */
             vertex_attribute2,
             vertex_attribute3,
             vertex_attribute4,
-            vertex_attribute5,
+            /* vertex_attribute5,
             vertex_attribute6,
             vertex_attribute7,
-            vertex_attribute8,
+            vertex_attribute8, */
         ]);
 
     // Describe the color target (for the target info, which is for the pipeline)
@@ -1660,7 +1676,7 @@ pub fn main() {
                             0,
                             &VertexUniformBuffer {
                                 transform_matrix: multiplied_and_player_transform_matrix,
-                                morph_weights: morph_weights,
+                                /* morph_weights: morph_weights, */
                                 // morph_target_count: primitive_data.morph_target_count,
                                 // vertex_count: primitive_data.vertex_count,
                                 // joint_matrices: get_vector_of_500_identity_matrix(),
