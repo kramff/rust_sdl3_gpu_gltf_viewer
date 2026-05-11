@@ -1,6 +1,8 @@
 // Uncomment the next line to not show the console window
 // #![windows_subsystem = "windows"]
 
+// TODO: Ok general note, should use the '.map(|item| {modify_item}).collect()' syntax instead of 'for item in list {some_vector.push(modify_item)}'
+
 extern crate sdl3;
 
 use gltf::Document;
@@ -130,12 +132,23 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
             println!("Skeleton is root node");
         }
         // Get the skeleton nodes used as joints for this skin
-        let mut temp_joint_vec: Vec<usize> = Vec::new();
-        for joint in skin.joints() {
-            // each joint is a node
-            temp_joint_vec.push(joint.index());
-        }
-        dbg!(temp_joint_vec);
+        let temp_joint_vec: Vec<usize> = skin
+            .joints()
+            .map(|joint| {
+                // each joint is a node
+                joint.index()
+            })
+            .collect();
+        // Loop through nodes in the document to set up a reverse lookup array thingy
+        let joint_lookup_vec: Vec<Option<usize>> = document
+            .nodes()
+            .map(|node| {
+                temp_joint_vec
+                    .iter()
+                    .position(|joint_index| *joint_index == node.index())
+            })
+            .collect();
+        dbg!(joint_lookup_vec);
     }
 
     let meshes_vec = document
