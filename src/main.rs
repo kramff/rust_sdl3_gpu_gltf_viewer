@@ -92,11 +92,17 @@ struct AnimationChannelData {
     // channel_index: usize,
 }
 
+struct SkinData {
+    joint_lookup_vec: Vec<Option<usize>>,
+    inverse_bind_matrices: Vec<[[f32; 4]; 4]>,
+}
+
 struct ModelData<'a> {
     meshes: Vec<MeshData>,
     images: Vec<ImageData<'a>>,
     document: Document,
     animations: Vec<AnimationData>,
+    skins: Vec<SkinData>,
 }
 
 #[allow(dead_code)] // Compiler doesn't see that the code is used to pass info to the gpu
@@ -117,39 +123,55 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
     let copy_command_buffer = gpu_device.acquire_command_buffer().unwrap();
     let copy_pass = gpu_device.begin_copy_pass(&copy_command_buffer).unwrap();
 
-    for skin in document.skins() {
-        println!("skin name: {}", skin.name().unwrap_or("no name"));
-        let skin_reader = skin.reader(|buffer| Some(&buffers[buffer.index()]));
-        if let Some(inverse_bind_matrices) = skin_reader.read_inverse_bind_matrices() {
-            println!(
-                "Skin has {} inverse bind matrices",
-                inverse_bind_matrices.len()
-            );
-        }
-        if let Some(skeleton_node) = skin.skeleton() {
-            println!("Skeleton node is index {}", skeleton_node.index());
-        } else {
-            println!("Skeleton is root node");
-        }
-        // Get the skeleton nodes used as joints for this skin
-        let temp_joint_vec: Vec<usize> = skin
-            .joints()
-            .map(|joint| {
-                // each joint is a node
-                joint.index()
-            })
-            .collect();
-        // Loop through nodes in the document to set up a reverse lookup array thingy
-        let joint_lookup_vec: Vec<Option<usize>> = document
-            .nodes()
-            .map(|node| {
-                temp_joint_vec
-                    .iter()
-                    .position(|joint_index| *joint_index == node.index())
-            })
-            .collect();
-        dbg!(joint_lookup_vec);
-    }
+    let skin_data: Vec<SkinData> = document
+        .skins()
+        .map(|skin| {
+            println!("skin name: {}", skin.name().unwrap_or("no name"));
+            let skin_reader = skin.reader(|buffer| Some(&buffers[buffer.index()]));
+            let inverse_bind_matrices_read = skin_reader.read_inverse_bind_matrices();
+            let inverse_bind_matrices: Vec<[[f32; 4]; 4]> = if inverse_bind_matrices_read.is_some()
+            {
+                inverse_bind_matrices_read.unwrap().collect()
+            } else {
+                get_vector_of_n_identity_matrix(skin.joints().len())
+            };
+            // if let Some(inverse_bind_matrices) = skin_reader.read_inverse_bind_matrices() {
+            //     println!(
+            //         "Skin has {} inverse bind matrices",
+            //         inverse_bind_matrices.len()
+            //     );
+            // }
+            if let Some(skeleton_node) = skin.skeleton() {
+                println!("Skeleton node is index {}", skeleton_node.index());
+            } else {
+                println!("Skeleton is root node");
+            }
+            // Get the skeleton nodes used as joints for this skin
+            let temp_joint_vec: Vec<usize> = skin
+                .joints()
+                .map(|joint| {
+                    // each joint is a node
+                    joint.index()
+                })
+                .collect();
+            // Loop through nodes in the document to set up a reverse lookup array thingy
+            let joint_lookup_vec: Vec<Option<usize>> = document
+                .nodes()
+                .map(|node| {
+                    temp_joint_vec
+                        .iter()
+                        .position(|joint_index| *joint_index == node.index())
+                })
+                .collect();
+            // dbg!(joint_lookup_vec);
+            // Looks like: [ Some(6), Some(5), Some(14), Some(19), None, None, None, None, None ... ]
+            // Or like: [None, None, None, None, Some(23), Some(0), Some(15), None, None, None ...]
+            SkinData {
+                joint_lookup_vec: joint_lookup_vec,
+                inverse_bind_matrices: inverse_bind_matrices,
+            }
+        })
+        .collect();
 
     let meshes_vec = document
         .meshes()
@@ -228,7 +250,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     if let Some(iter) = reader.read_positions() {
                         for (index, vertex_position) in iter.enumerate() {
                             // Use vertex color from model data  or use default value (white)
-                            let vertex_color = colors_temp_vector
+                            let _vertex_color = colors_temp_vector
                                 .get(index)
                                 .or(Some(&[1f32, 1f32, 1f32, 1f32]))
                                 .unwrap();
@@ -245,7 +267,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                     &[0f32, 0f32, 0f32]
                                 }
                             };
-                            let morph_1 = [morph_1[0], morph_1[1], morph_1[2], 0f32];
+                            let _morph_1 = [morph_1[0], morph_1[1], morph_1[2], 0f32];
                             let morph_2 = {
                                 if let Some(morph_target_1) = morph_targets_temp_vec.get(1) {
                                     morph_target_1.get(index).unwrap_or(&[0f32, 0f32, 0f32])
@@ -253,7 +275,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                     &[0f32, 0f32, 0f32]
                                 }
                             };
-                            let morph_2 = [morph_2[0], morph_2[1], morph_2[2], 0f32];
+                            let _morph_2 = [morph_2[0], morph_2[1], morph_2[2], 0f32];
                             let morph_3 = {
                                 if let Some(morph_target_1) = morph_targets_temp_vec.get(2) {
                                     morph_target_1.get(index).unwrap_or(&[0f32, 0f32, 0f32])
@@ -261,7 +283,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                     &[0f32, 0f32, 0f32]
                                 }
                             };
-                            let morph_3 = [morph_3[0], morph_3[1], morph_3[2], 0f32];
+                            let _morph_3 = [morph_3[0], morph_3[1], morph_3[2], 0f32];
                             let morph_4 = {
                                 if let Some(morph_target_1) = morph_targets_temp_vec.get(3) {
                                     morph_target_1.get(index).unwrap_or(&[0f32, 0f32, 0f32])
@@ -269,7 +291,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                     &[0f32, 0f32, 0f32]
                                 }
                             };
-                            let morph_4 = [morph_4[0], morph_4[1], morph_4[2], 0f32];
+                            let _morph_4 = [morph_4[0], morph_4[1], morph_4[2], 0f32];
                             let joint = joints_temp_vec
                                 .get(index)
                                 .unwrap_or(&[0u32, 0u32, 0u32, 0u32]);
@@ -621,6 +643,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
         images: images_vec,
         document,
         animations: animations_vec,
+        skins: skin_data,
     }
 }
 
@@ -761,17 +784,11 @@ fn create_joint_matrix_buffer_and_upload_to_gpu(gpu_device: &Device) -> Buffer {
         .build()
         .unwrap();
 
-    // Fill the transfer buffer with data
+    // Fill the transfer buffer with data (use identity matrix to start with)
     let mut buffer_mem_map = transfer_buffer.map(&gpu_device, true);
     let buffer_mem_map_mem_mut: &mut [[[f32; 4]; 4]] = buffer_mem_map.mem_mut();
     for index in 0..499 {
         let transfer_value: [[f32; 4]; 4] = IDENTITY_MATRIX;
-        // let transfer_value: [[f32; 4]; 4] = [
-        //     [1.0, index as f32 * 0.1, 0.0, 0.0],
-        //     [0.0, 1.0, 0.0, 0.0],
-        //     [0.0, 0.0, 1.0, 0.0],
-        //     [0.0, 0.0, 0.0, 1.0],
-        // ];
         buffer_mem_map_mem_mut[index] = transfer_value;
     }
     buffer_mem_map.unmap();
@@ -1339,6 +1356,14 @@ pub fn main() {
                 .or(model.document.scenes().next())
                 .unwrap();
 
+            let mut joint_matrices_per_skin: Vec<Vec<[[f32; 4]; 4]>> = model
+                .skins
+                .iter()
+                .map(|skin| skin.inverse_bind_matrices.clone())
+                .collect();
+
+            //                model.document.nodes().map(|_| IDENTITY_MATRIX).collect();
+
             let mut remaining_node_transform_pairs = Vec::new();
 
             for node in scene.nodes() {
@@ -1386,7 +1411,7 @@ pub fn main() {
                     // multiply_matrices(inherited_transform_matrix, alternate_matrix);
                     multiply_matrices(inherited_transform_matrix, flipped_matrix);
 
-                let (animation_transform_matrix, morph_weights) = {
+                let (animation_transform_matrix, _morph_weights) = {
                     let mut animated_morph_weights = [0.0f32, 0.0f32, 0.0f32, 0.0f32];
                     // TODO could probably do some fancy vector reduce trick but for now it just has a mutable variable that all relevant animations apply to
                     // TODO Not sure if this is the correct, approach, might need to get the translate, rotate, scale components out and multiply them in a specific order?
@@ -1402,9 +1427,7 @@ pub fn main() {
                         //     .next()
                         //     .unwrap();
 
-                        // TODO - should check if the animation is "active", otherwise all animations will be playing constantly
-                        // For now just doing animation 0
-                        if animation.animation_index == 0 {
+                        if animation.animation_index == current_animation {
                             // TODO - This is resource intensive and should be optimized
                             // Maybe split up the for loops so it's not looping through all the animations inside all the nodes?
                             // Maybe cache the results of the animations? (calculated transforms and weights)
@@ -1646,6 +1669,8 @@ pub fn main() {
                                     //     }
                                     //     &AnimationOutput::MorphTargetWeight(_weight) => IDENTITY_MATRIX,
                                     // };
+
+                                    // Apply to animation node
                                     if interpolated_transform.is_some() {
                                         // TODO not sure if correct multiplication order
                                         animation_full_matrix = multiply_matrices(
@@ -1665,6 +1690,11 @@ pub fn main() {
                     multiplied_transform_matrix_pre_animation,
                     animation_transform_matrix,
                 );
+
+                // Apply to joints
+                // for joint_matrix in joint_matrices_per_skin {
+                //     if let Some(joint) = joint_matrix.get(node.index()) {}
+                // }
 
                 if let Some(mesh) = node.mesh() {
                     // Render mesh with transform
@@ -1837,11 +1867,15 @@ const IDENTITY_MATRIX: [[f32; 4]; 4] = [
     [0.0, 0.0, 0.0, 1.0],
 ];
 
-fn get_vector_of_500_identity_matrix() -> Vec<[[f32; 4]; 4]> {
+fn _get_vector_of_500_identity_matrix() -> Vec<[[f32; 4]; 4]> {
     vec![IDENTITY_MATRIX].repeat(500)
 }
 
-fn get_array_of_500_identity_matrix() -> [[[f32; 4]; 4]; 500] {
+fn get_vector_of_n_identity_matrix(count: usize) -> Vec<[[f32; 4]; 4]> {
+    vec![IDENTITY_MATRIX].repeat(count)
+}
+
+fn _get_array_of_500_identity_matrix() -> [[[f32; 4]; 4]; 500] {
     array::from_fn(|_| IDENTITY_MATRIX)
 }
 
@@ -1998,7 +2032,7 @@ fn quaternion_dot_product(a: [f32; 4], b: [f32; 4]) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use crate::{IDENTITY_MATRIX, get_vector_of_500_identity_matrix, multiply_matrices};
+    use crate::{_get_vector_of_500_identity_matrix, IDENTITY_MATRIX, multiply_matrices};
 
     #[test]
     fn test_multiply_matrices_1() {
@@ -2010,7 +2044,7 @@ mod tests {
 
     #[test]
     fn test_500_identity_matrices() {
-        let my_500_identity_matrices = get_vector_of_500_identity_matrix();
+        let my_500_identity_matrices = _get_vector_of_500_identity_matrix();
         assert_eq!(my_500_identity_matrices.len(), 500);
         assert_eq!(my_500_identity_matrices.get(0).unwrap(), &IDENTITY_MATRIX);
         assert_eq!(my_500_identity_matrices.get(1).unwrap(), &IDENTITY_MATRIX);
