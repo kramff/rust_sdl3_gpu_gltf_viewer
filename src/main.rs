@@ -154,6 +154,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     joint.index()
                 })
                 .collect();
+            println!("number of joints in this skin: {}", temp_joint_vec.len());
             // Loop through nodes in the document to set up a reverse lookup array thingy
             let joint_lookup_vec: Vec<Option<usize>> = document
                 .nodes()
@@ -1356,13 +1357,35 @@ pub fn main() {
                 .or(model.document.scenes().next())
                 .unwrap();
 
-            let mut joint_matrices_per_skin: Vec<Vec<[[f32; 4]; 4]>> = model
+            let mut meshes_to_render: Vec<_> = Vec::new();
+
+            // TODO - Ok I think this was completely wrong to do lol
+            /*let joint_matrices: Vec<[[f32; 4]; 4]> = model
                 .skins
                 .iter()
                 .map(|skin| skin.inverse_bind_matrices.clone())
-                .collect();
-
-            //                model.document.nodes().map(|_| IDENTITY_MATRIX).collect();
+                .reduce(|accumulator_vec, add_vec| {
+                    accumulator_vec
+                        .iter()
+                        .zip(add_vec.iter())
+                        .map(|(acc_item, add_item)| {
+                            multiply_matrices(acc_item.clone(), add_item.clone())
+                        })
+                        .collect()
+                })
+                .unwrap();
+            if game_ticks == 1 {
+                println!(
+                    "model skins 0 joint lookup len {}",
+                    model.skins.first().unwrap().joint_lookup_vec.len()
+                );
+                println!(
+                    "model skins 1 joint lookup len {}",
+                    model.skins.get(1).unwrap().joint_lookup_vec.len()
+                );
+                println!("joint matrices len: {}", joint_matrices.len());
+                // dbg!(joint_matrices);
+            }*/
 
             let mut remaining_node_transform_pairs = Vec::new();
 
@@ -1696,120 +1719,112 @@ pub fn main() {
                 //     if let Some(joint) = joint_matrix.get(node.index()) {}
                 // }
 
+                // Store mesh in meshes_to_render and render after finishing node loop
                 if let Some(mesh) = node.mesh() {
-                    // Render mesh with transform
-
-                    // Player's Transform Matrix  *  Model's Transform Matrix is correct
+                    // Player's Transform Matrix * Model's Transform Matrix is correct
                     let multiplied_and_player_transform_matrix =
                         multiply_matrices(player_transform, multiplied_transform_matrix);
-                    // multiply_matrices(multiplied_transform_matrix, player_transform);
-
-                    // Send transform to shader as a uniform
-                    // command_buffer.push_vertex_uniform_data(0, &multiplied_and_player_transform_matrix);
-                    // command_buffer.push_vertex_uniform_data(0, &multiplied_transform_matrix);
-                    // command_buffer.push_vertex_uniform_data(0, &IDENTITY_MATRIX);
-                    // command_buffer.push_vertex_uniform_data(0, &player_transform);
-
-                    let mesh_data = model.meshes.get(mesh.index()).unwrap();
-                    for primitive in mesh.primitives() {
-                        // Look up the primitive data
-                        let primitive_data = mesh_data.primitives.get(primitive.index()).unwrap();
-
-                        command_buffer.push_vertex_uniform_data(
-                            0,
-                            &VertexUniformBuffer {
-                                transform_matrix: multiplied_and_player_transform_matrix,
-                                /* morph_weights: morph_weights, */
-                                // morph_target_count: primitive_data.morph_target_count,
-                                // vertex_count: primitive_data.vertex_count,
-                                // joint_matrices: get_vector_of_500_identity_matrix(),
-                                // joint_matrices: get_array_of_500_identity_matrix(),
-                            },
-                        );
-
-                        // Setup the buffer bindings for vertices
-                        let buffer_bindings_vertex = BufferBinding::new()
-                            .with_buffer(&primitive_data.vertex_buffer)
-                            .with_offset(0);
-
-                        // Bind the vertex buffer
-                        render_pass.bind_vertex_buffers(0, &[buffer_bindings_vertex]);
-
-                        // Setup the buffer bindings for indices
-                        let buffer_bindings_index = BufferBinding::new()
-                            .with_buffer(&primitive_data.index_buffer)
-                            .with_offset(0);
-
-                        // Bind the index buffer
-                        render_pass
-                            .bind_index_buffer(&buffer_bindings_index, IndexElementSize::_32BIT);
-
-                        // Determine the texture(s) to use
-                        let base_color_texture_option = primitive
-                            .material()
-                            .pbr_metallic_roughness()
-                            .base_color_texture();
-
-                        if let Some(base_color_texture) = base_color_texture_option {
-                            // Texture has image
-                            let image_index = base_color_texture.texture().source().index();
-                            let image_data = model.images.get(image_index).unwrap();
-
-                            // Bind sampler
-                            let texture_sampler_binding = TextureSamplerBinding::new()
-                                .with_texture(&image_data.texture)
-                                .with_sampler(&image_data.sampler);
-                            render_pass.bind_fragment_samplers(0, &[texture_sampler_binding]);
-                        } else {
-                            // No image - use dummy image
-
-                            // Bind sampler
-                            let texture_sampler_binding = TextureSamplerBinding::new()
-                                .with_texture(&dummy_image.texture)
-                                .with_sampler(&dummy_image.sampler);
-                            render_pass.bind_fragment_samplers(0, &[texture_sampler_binding]);
-                        }
-
-                        // Is there a way to not clone the buffer? Or does it not matter?
-                        // if primitive_data.morph_target_buffer.is_some() {
-                        //     render_pass.bind_vertex_storage_buffers(
-                        //         0,
-                        //         &[primitive_data.morph_target_buffer.clone().unwrap()],
-                        //     );
-                        // } else {
-                        //     render_pass.bind_vertex_storage_buffers(0, &[dummy_morph.clone()]);
-                        // }
-
-                        // if let Some(morph_target_buffer) = primitive_data.morph_target_buffer {
-                        //     // let buffer_bindings_morph = BufferBinding::new()
-                        //     //     .with_buffer(&morph_target_buffer)
-                        //     //     .with_offset(0);
-                        //     // render_pass.bind_vertex_storage_buffers(0, &[buffer_bindings_morph]);
-                        //     render_pass.bind_vertex_storage_buffers(0, &[morph_target_buffer]);
-                        // }
-
-                        // Bind joint matrix buffer
-                        render_pass.bind_vertex_storage_buffers(0, &[joint_matrix_buffer.clone()]);
-
-                        // Issue the draw call using the indexes and other bound data
-                        render_pass.draw_indexed_primitives(primitive_data.index_count, 1, 0, 0, 0);
-                    }
-
-                    // End of rendering a mesh
+                    // Keep track of mesh and render after looping through all nodes
+                    meshes_to_render.push((mesh, multiplied_and_player_transform_matrix))
                 }
                 for child_node in node.children() {
                     // Add child nodes to the list
                     remaining_node_transform_pairs.push((child_node, multiplied_transform_matrix));
                 }
             }
+            // Bind joint matrix buffer (Should be consistent for the whole model, I think?)
+            render_pass.bind_vertex_storage_buffers(0, &[joint_matrix_buffer.clone()]);
+
+            // End of node loop, now render the meshes that were found
+            for (mesh, multiplied_and_player_transform_matrix) in meshes_to_render {
+                command_buffer.push_vertex_uniform_data(
+                    0,
+                    &VertexUniformBuffer {
+                        transform_matrix: multiplied_and_player_transform_matrix,
+                        /* morph_weights: morph_weights, */
+                        // morph_target_count: primitive_data.morph_target_count,
+                        // vertex_count: primitive_data.vertex_count,
+                        // joint_matrices: get_vector_of_500_identity_matrix(),
+                        // joint_matrices: get_array_of_500_identity_matrix(),
+                    },
+                );
+                let mesh_data = model.meshes.get(mesh.index()).unwrap();
+                for primitive in mesh.primitives() {
+                    // Look up the primitive data
+                    let primitive_data = mesh_data.primitives.get(primitive.index()).unwrap();
+
+                    // Setup the buffer bindings for vertices
+                    let buffer_bindings_vertex = BufferBinding::new()
+                        .with_buffer(&primitive_data.vertex_buffer)
+                        .with_offset(0);
+
+                    // Bind the vertex buffer
+                    render_pass.bind_vertex_buffers(0, &[buffer_bindings_vertex]);
+
+                    // Setup the buffer bindings for indices
+                    let buffer_bindings_index = BufferBinding::new()
+                        .with_buffer(&primitive_data.index_buffer)
+                        .with_offset(0);
+
+                    // Bind the index buffer
+                    render_pass.bind_index_buffer(&buffer_bindings_index, IndexElementSize::_32BIT);
+
+                    // Determine the texture(s) to use
+                    let base_color_texture_option = primitive
+                        .material()
+                        .pbr_metallic_roughness()
+                        .base_color_texture();
+
+                    if let Some(base_color_texture) = base_color_texture_option {
+                        // Texture has image
+                        let image_index = base_color_texture.texture().source().index();
+                        let image_data = model.images.get(image_index).unwrap();
+
+                        // Bind sampler
+                        let texture_sampler_binding = TextureSamplerBinding::new()
+                            .with_texture(&image_data.texture)
+                            .with_sampler(&image_data.sampler);
+                        render_pass.bind_fragment_samplers(0, &[texture_sampler_binding]);
+                    } else {
+                        // No image - use dummy image
+
+                        // Bind sampler
+                        let texture_sampler_binding = TextureSamplerBinding::new()
+                            .with_texture(&dummy_image.texture)
+                            .with_sampler(&dummy_image.sampler);
+                        render_pass.bind_fragment_samplers(0, &[texture_sampler_binding]);
+                    }
+
+                    // Is there a way to not clone the buffer? Or does it not matter?
+                    // if primitive_data.morph_target_buffer.is_some() {
+                    //     render_pass.bind_vertex_storage_buffers(
+                    //         0,
+                    //         &[primitive_data.morph_target_buffer.clone().unwrap()],
+                    //     );
+                    // } else {
+                    //     render_pass.bind_vertex_storage_buffers(0, &[dummy_morph.clone()]);
+                    // }
+
+                    // if let Some(morph_target_buffer) = primitive_data.morph_target_buffer {
+                    //     // let buffer_bindings_morph = BufferBinding::new()
+                    //     //     .with_buffer(&morph_target_buffer)
+                    //     //     .with_offset(0);
+                    //     // render_pass.bind_vertex_storage_buffers(0, &[buffer_bindings_morph]);
+                    //     render_pass.bind_vertex_storage_buffers(0, &[morph_target_buffer]);
+                    // }
+
+                    // Issue the draw call using the indexes and other bound data
+                    render_pass.draw_indexed_primitives(primitive_data.index_count, 1, 0, 0, 0);
+                }
+
+                // End of rendering a mesh
+            }
         }
 
         // End the render pass
         gpu_device.end_render_pass(render_pass);
 
-        // Start another render pass for the gui
-
-        // Display gui with imgui
+        // Display gui with imgui (It does another render pass)
         imgui.render(
             &mut sdl_context,
             &gpu_device,
