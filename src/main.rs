@@ -167,6 +167,14 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
             // dbg!(joint_lookup_vec);
             // Looks like: [ Some(6), Some(5), Some(14), Some(19), None, None, None, None, None ... ]
             // Or like: [None, None, None, None, Some(23), Some(0), Some(15), None, None, None ...]
+            println!(
+                "this skin: joint lookup vec has: {}",
+                joint_lookup_vec.len()
+            );
+            println!(
+                "this skin, inverse bind matrices has: {}",
+                inverse_bind_matrices.len()
+            );
             SkinData {
                 joint_lookup_vec: joint_lookup_vec,
                 inverse_bind_matrices: inverse_bind_matrices,
@@ -764,13 +772,13 @@ fn create_dummy_image_and_copy_to_gpu<'a>(gpu_device: &Device) -> ImageData<'a> 
     morph_target_buffer
 } */
 
-fn create_joint_matrix_buffer_and_upload_to_gpu(gpu_device: &Device) -> Buffer {
+fn create_joint_matrix_buffer_and_upload_to_gpu(gpu_device: &Device) -> (Buffer, TransferBuffer) {
     // Start a copy pass
     let copy_command_buffer = gpu_device.acquire_command_buffer().unwrap();
     let copy_pass = gpu_device.begin_copy_pass(&copy_command_buffer).unwrap();
 
     let buffer_size = size_of::<f32>() as u32 * 8000; // 4x4 matrix * 500 entries
-    let morph_target_buffer = gpu_device
+    let joint_matrix_buffer = gpu_device
         .create_buffer()
         .with_size(buffer_size)
         // Not sure on the buffer usage flag? I think "Graphics Storage Read" makes sense...
@@ -801,7 +809,7 @@ fn create_joint_matrix_buffer_and_upload_to_gpu(gpu_device: &Device) -> Buffer {
 
     // Set what region of the buffer to transfer (the size of the indices data)
     let buffer_region = BufferRegion::default()
-        .with_buffer(&morph_target_buffer)
+        .with_buffer(&joint_matrix_buffer)
         .with_size(buffer_size)
         .with_offset(0u32);
 
@@ -812,7 +820,61 @@ fn create_joint_matrix_buffer_and_upload_to_gpu(gpu_device: &Device) -> Buffer {
     gpu_device.end_copy_pass(copy_pass);
     copy_command_buffer.submit().unwrap();
 
-    morph_target_buffer
+    (joint_matrix_buffer, transfer_buffer)
+}
+
+fn update_joint_matrix_buffer_to_gpu(
+    gpu_device: &Device,
+    transfer_buffer: TransferBuffer,
+    joint_matrix_buffer: Buffer,
+    joint_matrix_data: Vec<[[f32; 4]; 4]>,
+) {
+    // Start a copy pass
+    let copy_command_buffer = gpu_device.acquire_command_buffer().unwrap();
+    let copy_pass = gpu_device.begin_copy_pass(&copy_command_buffer).unwrap();
+
+    let buffer_size = size_of::<f32>() as u32 * 8000; // 4x4 matrix * 500 entries
+    // let joint_matrix_buffer = gpu_device
+    //     .create_buffer()
+    //     .with_size(buffer_size)
+    //     // Not sure on the buffer usage flag? I think "Graphics Storage Read" makes sense...
+    //     .with_usage(BufferUsageFlags::GRAPHICS_STORAGE_READ)
+    //     .build()
+    //     .unwrap();
+
+    // let transfer_buffer = gpu_device
+    //     .create_transfer_buffer()
+    //     .with_size(buffer_size)
+    //     .with_usage(TransferBufferUsage::UPLOAD)
+    //     .build()
+    //     .unwrap();
+
+    // Fill the transfer buffer with data
+    let mut buffer_mem_map = transfer_buffer.map(&gpu_device, true);
+    let buffer_mem_map_mem_mut: &mut [[[f32; 4]; 4]] = buffer_mem_map.mem_mut();
+    // for index in 0..499 {
+    for (index, joint_matrix) in joint_matrix_data.iter().enumerate() {
+        buffer_mem_map_mem_mut[index] = *joint_matrix;
+    }
+    buffer_mem_map.unmap();
+
+    // Set the location of the data (it's at the start of the transfer buffer)
+    let data_location = TransferBufferLocation::default()
+        .with_transfer_buffer(&transfer_buffer)
+        .with_offset(0u32);
+
+    // Set what region of the buffer to transfer (the size of the indices data)
+    let buffer_region = BufferRegion::default()
+        .with_buffer(&joint_matrix_buffer)
+        .with_size(buffer_size)
+        .with_offset(0u32);
+
+    // Upload the data
+    copy_pass.upload_to_gpu_buffer(data_location, buffer_region, true);
+
+    // End the copy pass
+    gpu_device.end_copy_pass(copy_pass);
+    copy_command_buffer.submit().unwrap();
 }
 
 pub fn main() {
@@ -1035,10 +1097,10 @@ pub fn main() {
 
     // Load a model...
 
-    loaded_models.push(load_model_and_copy_to_gpu(
-        "models/Low-Poly-Base_copy.glb",
-        &gpu_device,
-    ));
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/Low-Poly-Base_copy.glb",
+    //     &gpu_device,
+    // ));
 
     // loaded_models.push(load_model_and_copy_to_gpu(
     //     "models/Avocado.glb",
@@ -1062,10 +1124,10 @@ pub fn main() {
 
     // loaded_models.push(load_model_and_copy_to_gpu("models/ABeautifulGame.glb", &gpu_device));
 
-    // loaded_models.push(load_model_and_copy_to_gpu(
-    //     "models/GlassHurricaneCandleHolder.glb",
-    //     &gpu_device,
-    // ));
+    loaded_models.push(load_model_and_copy_to_gpu(
+        "models/GlassHurricaneCandleHolder.glb",
+        &gpu_device,
+    ));
 
     // loaded_models.push(load_model_and_copy_to_gpu(
     //     "models/axes_test.glb",
@@ -1090,7 +1152,8 @@ pub fn main() {
     // Put a dummy image into the gpu
     let dummy_image = create_dummy_image_and_copy_to_gpu(&gpu_device);
 
-    let joint_matrix_buffer = create_joint_matrix_buffer_and_upload_to_gpu(&gpu_device);
+    let (joint_matrix_buffer, joint_matrix_transfer_buffer) =
+        create_joint_matrix_buffer_and_upload_to_gpu(&gpu_device);
 
     // Put a dummy morph buffer into the gpu
     // let dummy_morph = create_dummy_morph_buffer_and_upload_to_gpu(&gpu_device);
@@ -1359,6 +1422,7 @@ pub fn main() {
 
             let mut meshes_to_render: Vec<_> = Vec::new();
 
+            let mut joint_matrices = get_vector_of_n_identity_matrix(500);
             // TODO - Ok I think this was completely wrong to do lol
             /*let joint_matrices: Vec<[[f32; 4]; 4]> = model
                 .skins
@@ -1718,6 +1782,19 @@ pub fn main() {
                 // for joint_matrix in joint_matrices_per_skin {
                 //     if let Some(joint) = joint_matrix.get(node.index()) {}
                 // }
+                for skin in &model.skins {
+                    if let Some(joint_lookup_attempt) = skin.joint_lookup_vec.get(node.index()) {
+                        // Joint isn't past the end of the lookup vector
+                        if let Some(joint_lookup_index) = joint_lookup_attempt {
+                            let inverse_bind_matrix =
+                                skin.inverse_bind_matrices.get(*joint_lookup_index).unwrap();
+                            joint_matrices[*joint_lookup_index] = multiply_matrices(
+                                multiplied_transform_matrix,
+                                *inverse_bind_matrix,
+                            );
+                        }
+                    }
+                }
 
                 // Store mesh in meshes_to_render and render after finishing node loop
                 if let Some(mesh) = node.mesh() {
@@ -1733,6 +1810,14 @@ pub fn main() {
                 }
             }
             // Bind joint matrix buffer (Should be consistent for the whole model, I think?)
+            // let (joint_matrix_buffer, joint_matrix_transfer_buffer) =
+            //     create_joint_matrix_buffer_and_upload_to_gpu(&gpu_device);
+            update_joint_matrix_buffer_to_gpu(
+                &gpu_device,
+                joint_matrix_transfer_buffer.clone(),
+                joint_matrix_buffer.clone(),
+                joint_matrices,
+            );
             render_pass.bind_vertex_storage_buffers(0, &[joint_matrix_buffer.clone()]);
 
             // End of node loop, now render the meshes that were found
