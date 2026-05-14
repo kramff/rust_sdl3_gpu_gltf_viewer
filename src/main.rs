@@ -131,10 +131,14 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
             let inverse_bind_matrices_read = skin_reader.read_inverse_bind_matrices();
             let inverse_bind_matrices: Vec<[[f32; 4]; 4]> = if inverse_bind_matrices_read.is_some()
             {
-                inverse_bind_matrices_read.unwrap().collect()
+                inverse_bind_matrices_read
+                    .unwrap()
+                    .map(flip_matrix_diagonally)
+                    .collect()
             } else {
                 get_vector_of_n_identity_matrix(skin.joints().len())
             };
+            // dbg!(&inverse_bind_matrices);
             // if let Some(inverse_bind_matrices) = skin_reader.read_inverse_bind_matrices() {
             //     println!(
             //         "Skin has {} inverse bind matrices",
@@ -155,6 +159,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                 })
                 .collect();
             println!("number of joints in this skin: {}", temp_joint_vec.len());
+            // println!("{:?}", &temp_joint_vec);
             // Loop through nodes in the document to set up a reverse lookup array thingy
             let joint_lookup_vec: Vec<Option<usize>> = document
                 .nodes()
@@ -164,6 +169,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                         .position(|joint_index| *joint_index == node.index())
                 })
                 .collect();
+            // println!("{:?}", &joint_lookup_vec);
             // dbg!(joint_lookup_vec);
             // Looks like: [ Some(6), Some(5), Some(14), Some(19), None, None, None, None, None ... ]
             // Or like: [None, None, None, None, Some(23), Some(0), Some(15), None, None, None ...]
@@ -214,9 +220,9 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                 u32::from(joint[3]),
                             ];
                             joints_temp_vec.push(joint_u32);
-                            // if joint.len() > 4 {
-                            //     println!("Wow! This vertex has {} joints.", joint.len());
-                            // }
+                            if joint.len() > 4 {
+                                println!("Wow! This vertex has {} joints.", joint.len());
+                            }
                         }
                     }
                     let mut weights_temp_vec = Vec::new();
@@ -1097,10 +1103,10 @@ pub fn main() {
 
     // Load a model...
 
-    // loaded_models.push(load_model_and_copy_to_gpu(
-    //     "models/Low-Poly-Base_copy.glb",
-    //     &gpu_device,
-    // ));
+    loaded_models.push(load_model_and_copy_to_gpu(
+        "models/Low-Poly-Base_copy.glb",
+        &gpu_device,
+    ));
 
     // loaded_models.push(load_model_and_copy_to_gpu(
     //     "models/Avocado.glb",
@@ -1124,10 +1130,10 @@ pub fn main() {
 
     // loaded_models.push(load_model_and_copy_to_gpu("models/ABeautifulGame.glb", &gpu_device));
 
-    loaded_models.push(load_model_and_copy_to_gpu(
-        "models/GlassHurricaneCandleHolder.glb",
-        &gpu_device,
-    ));
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/GlassHurricaneCandleHolder.glb",
+    //     &gpu_device,
+    // ));
 
     // loaded_models.push(load_model_and_copy_to_gpu(
     //     "models/axes_test.glb",
@@ -1782,7 +1788,10 @@ pub fn main() {
                 // for joint_matrix in joint_matrices_per_skin {
                 //     if let Some(joint) = joint_matrix.get(node.index()) {}
                 // }
-                for skin in &model.skins {
+                // for skin in &model.skins
+                // TODO - not sure about this. might need to have a separate buffer for each skin?
+                let skin = &model.skins.get(0).unwrap();
+                {
                     if let Some(joint_lookup_attempt) = skin.joint_lookup_vec.get(node.index()) {
                         // Joint isn't past the end of the lookup vector
                         if let Some(joint_lookup_index) = joint_lookup_attempt {
