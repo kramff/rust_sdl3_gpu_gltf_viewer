@@ -220,9 +220,9 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                                 u32::from(joint[3]),
                             ];
                             joints_temp_vec.push(joint_u32);
-                            if joint.len() > 4 {
-                                println!("Wow! This vertex has {} joints.", joint.len());
-                            }
+                            // if joint.len() > 4 {
+                            //     println!("Wow! This vertex has {} joints.", joint.len());
+                            // }
                         }
                     }
                     let mut weights_temp_vec = Vec::new();
@@ -861,6 +861,12 @@ fn update_joint_matrix_buffer_to_gpu(
     // for index in 0..499 {
     for (index, joint_matrix) in joint_matrix_data.iter().enumerate() {
         buffer_mem_map_mem_mut[index] = *joint_matrix;
+        // buffer_mem_map_mem_mut[index] = [
+        //     [1f32, 0f32, 0f32, 0f32],
+        //     [0f32, 1f32, 0f32, 0f32],
+        //     [0f32, 0f32, 1f32, 0f32],
+        //     [0f32, 0f32, 0f32, 1f32],
+        // ];
     }
     buffer_mem_map.unmap();
 
@@ -1103,10 +1109,10 @@ pub fn main() {
 
     // Load a model...
 
-    loaded_models.push(load_model_and_copy_to_gpu(
-        "models/Low-Poly-Base_copy.glb",
-        &gpu_device,
-    ));
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/Low-Poly-Base_copy.glb",
+    //     &gpu_device,
+    // ));
 
     // loaded_models.push(load_model_and_copy_to_gpu(
     //     "models/Avocado.glb",
@@ -1155,6 +1161,11 @@ pub fn main() {
     //     &gpu_device,
     // ));
 
+    loaded_models.push(load_model_and_copy_to_gpu(
+        "models/my_vertex_skin_test.glb",
+        &gpu_device,
+    ));
+
     // Put a dummy image into the gpu
     let dummy_image = create_dummy_image_and_copy_to_gpu(&gpu_device);
 
@@ -1195,6 +1206,7 @@ pub fn main() {
         game_ticks += 1;
         let game_seconds = (game_ticks as f32) / 60.0;
         let _game_seconds_modulo = game_seconds % 1.0;
+        let mut animation_name: &str = "anim name here";
         for event in event_pump.poll_iter() {
             imgui.handle_event(&event);
             match event {
@@ -1429,33 +1441,6 @@ pub fn main() {
             let mut meshes_to_render: Vec<_> = Vec::new();
 
             let mut joint_matrices = get_vector_of_n_identity_matrix(500);
-            // TODO - Ok I think this was completely wrong to do lol
-            /*let joint_matrices: Vec<[[f32; 4]; 4]> = model
-                .skins
-                .iter()
-                .map(|skin| skin.inverse_bind_matrices.clone())
-                .reduce(|accumulator_vec, add_vec| {
-                    accumulator_vec
-                        .iter()
-                        .zip(add_vec.iter())
-                        .map(|(acc_item, add_item)| {
-                            multiply_matrices(acc_item.clone(), add_item.clone())
-                        })
-                        .collect()
-                })
-                .unwrap();
-            if game_ticks == 1 {
-                println!(
-                    "model skins 0 joint lookup len {}",
-                    model.skins.first().unwrap().joint_lookup_vec.len()
-                );
-                println!(
-                    "model skins 1 joint lookup len {}",
-                    model.skins.get(1).unwrap().joint_lookup_vec.len()
-                );
-                println!("joint matrices len: {}", joint_matrices.len());
-                // dbg!(joint_matrices);
-            }*/
 
             let mut remaining_node_transform_pairs = Vec::new();
 
@@ -1474,34 +1459,11 @@ pub fn main() {
                 let (node, inherited_transform_matrix) =
                     remaining_node_transform_pairs.pop().unwrap();
 
-                // Calculate transform for this node based on it's inherited transform and it's local transform
-                // Wrong order...? (Not sure)
-
-                // let multiplied_transform_matrix =
-                //     multiply_matrices(inherited_transform_matrix, node.transform().matrix());
-
-                // let multiplied_transform_matrix =
-                //     multiply_matrices(node.transform().matrix(), inherited_transform_matrix);
-
-                // Create my own matrix instead of using the one from the library?
-                // (Gltf library says the matrix is translation * rotation * scale)
-                // let (d_translate, d_rotation, d_scale) = node.transform().decomposed();
-                // let alternate_matrix = multiply_matrices_chain(vec![
-                //     matrix_translate_multi(d_translate[0], d_translate[1], d_translate[2]),
-                //     matrix_rotate_from_quaternion(
-                //         d_rotation[0],
-                //         d_rotation[1],
-                //         d_rotation[2],
-                //         d_rotation[3],
-                //     ),
-                //     matrix_scale_multi(d_scale[0], d_scale[1], d_scale[2]),
-                // ]);
+                // Get matrix from gltf document but flip it diagonally (switch rows and columns)
+                // because gltf has it one way and the 3d rendering setup wants it the other way
                 let flipped_matrix = flip_matrix_diagonally(node.transform().matrix());
-                // They are in fact different, it seems. Not sure exactly why but probably something to do
-                // with "column or row major order"
 
                 let multiplied_transform_matrix_pre_animation =
-                    // multiply_matrices(inherited_transform_matrix, alternate_matrix);
                     multiply_matrices(inherited_transform_matrix, flipped_matrix);
 
                 let (animation_transform_matrix, _morph_weights) = {
@@ -1521,6 +1483,14 @@ pub fn main() {
                         //     .unwrap();
 
                         if animation.animation_index == current_animation {
+                            animation_name = model
+                                .document
+                                .animations()
+                                .collect::<Vec<_>>()
+                                .get(animation.animation_index)
+                                .unwrap()
+                                .name()
+                                .unwrap_or("no name");
                             // TODO - This is resource intensive and should be optimized
                             // Maybe split up the for loops so it's not looping through all the animations inside all the nodes?
                             // Maybe cache the results of the animations? (calculated transforms and weights)
@@ -1788,19 +1758,26 @@ pub fn main() {
                 // for joint_matrix in joint_matrices_per_skin {
                 //     if let Some(joint) = joint_matrix.get(node.index()) {}
                 // }
+
                 // for skin in &model.skins
                 // TODO - not sure about this. might need to have a separate buffer for each skin?
-                let skin = &model.skins.get(0).unwrap();
-                {
+                // let skin = &model.skins.get(0).unwrap();
+                if let Some(skin) = &model.skins.first() {
+                    // Check that the joint isn't past the end of the lookup vector
                     if let Some(joint_lookup_attempt) = skin.joint_lookup_vec.get(node.index()) {
-                        // Joint isn't past the end of the lookup vector
+                        // Check that the joint
                         if let Some(joint_lookup_index) = joint_lookup_attempt {
                             let inverse_bind_matrix =
                                 skin.inverse_bind_matrices.get(*joint_lookup_index).unwrap();
-                            joint_matrices[*joint_lookup_index] = multiply_matrices(
+                            let joint_matrix = multiply_matrices(
                                 multiplied_transform_matrix,
                                 *inverse_bind_matrix,
                             );
+                            joint_matrices[*joint_lookup_index] = joint_matrix;
+                            if game_ticks == 100 && node.index() == 369 {
+                                println!("{:?}", joint_matrix);
+                            }
+                            // joint_matrices[*joint_lookup_index] = *inverse_bind_matrix;
                         }
                     }
                 }
@@ -1945,6 +1922,7 @@ pub fn main() {
                 }
                 ui.text(format!("Max animations: {}", max_animation));
                 ui.text(format!("Current animation {}", current_animation));
+                ui.text(format!("Current animation name {}", animation_name));
                 let animation_button = ui.button("Next animation");
                 if animation_button {
                     current_animation += 1;
@@ -1988,10 +1966,35 @@ fn _get_array_of_500_identity_matrix() -> [[[f32; 4]; 4]; 500] {
     array::from_fn(|_| IDENTITY_MATRIX)
 }
 
-// const ARRAY_OF_500_IDENTITY_MATRIX: [[[f32; 4]; 4]; 500] = array::repeat(IDENTITY_MATRIX);
-// (0..500)
-//    .map(|_| -> [[f32; 4]; 4] { IDENTITY_MATRIX })
-//    .collect();
+fn lerp_matrices(a: [[f32; 4]; 4], b: [[f32; 4]; 4], t: f32) -> [[f32; 4]; 4] {
+    let s = 1.0f32 - t;
+    [
+        [
+            a[0][0] * t + b[0][0] * s,
+            a[1][0] * t + b[1][0] * s,
+            a[2][0] * t + b[2][0] * s,
+            a[3][0] * t + b[3][0] * s,
+        ],
+        [
+            a[0][1] * t + b[0][1] * s,
+            a[1][1] * t + b[1][1] * s,
+            a[2][1] * t + b[2][1] * s,
+            a[3][1] * t + b[3][1] * s,
+        ],
+        [
+            a[0][2] * t + b[0][2] * s,
+            a[1][2] * t + b[1][2] * s,
+            a[2][2] * t + b[2][2] * s,
+            a[3][2] * t + b[3][2] * s,
+        ],
+        [
+            a[0][3] * t + b[0][3] * s,
+            a[1][3] * t + b[1][3] * s,
+            a[2][3] * t + b[2][3] * s,
+            a[3][3] * t + b[3][3] * s,
+        ],
+    ]
+}
 
 // fn matrix_rotate_around_x(a: f32) -> [[f32; 4]; 4] {
 //     // roll
