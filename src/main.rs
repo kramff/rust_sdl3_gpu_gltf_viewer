@@ -126,7 +126,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
     let skin_data: Vec<SkinData> = document
         .skins()
         .map(|skin| {
-            println!("skin name: {}", skin.name().unwrap_or("no name"));
+            // println!("skin name: {}", skin.name().unwrap_or("no name"));
             let skin_reader = skin.reader(|buffer| Some(&buffers[buffer.index()]));
             let inverse_bind_matrices_read = skin_reader.read_inverse_bind_matrices();
             let inverse_bind_matrices: Vec<[[f32; 4]; 4]> = if inverse_bind_matrices_read.is_some()
@@ -154,6 +154,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
             let temp_joint_vec: Vec<usize> = skin
                 .joints()
                 .map(|joint| {
+                    // println!("{}", joint.name().unwrap_or("no name"));
                     // each joint is a node
                     joint.index()
                 })
@@ -170,7 +171,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                 })
                 .collect();
             // println!("{:?}", &joint_lookup_vec);
-            // dbg!(joint_lookup_vec);
+            // dbg!(&joint_lookup_vec);
             // Looks like: [ Some(6), Some(5), Some(14), Some(19), None, None, None, None, None ... ]
             // Or like: [None, None, None, None, Some(23), Some(0), Some(15), None, None, None ...]
             println!(
@@ -1109,10 +1110,10 @@ pub fn main() {
 
     // Load a model...
 
-    // loaded_models.push(load_model_and_copy_to_gpu(
-    //     "models/Low-Poly-Base_copy.glb",
-    //     &gpu_device,
-    // ));
+    loaded_models.push(load_model_and_copy_to_gpu(
+        "models/Low-Poly-Base_copy.glb",
+        &gpu_device,
+    ));
 
     // loaded_models.push(load_model_and_copy_to_gpu(
     //     "models/Avocado.glb",
@@ -1161,10 +1162,20 @@ pub fn main() {
     //     &gpu_device,
     // ));
 
-    loaded_models.push(load_model_and_copy_to_gpu(
-        "models/my_vertex_skin_test.glb",
-        &gpu_device,
-    ));
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/my_vertex_skin_test.glb",
+    //     &gpu_device,
+    // ));
+
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/reimported_vertex_skin_test.glb",
+    //     &gpu_device,
+    // ));
+
+    // loaded_models.push(load_model_and_copy_to_gpu(
+    //     "models/pillar_test.glb",
+    //     &gpu_device,
+    // ));
 
     // Put a dummy image into the gpu
     let dummy_image = create_dummy_image_and_copy_to_gpu(&gpu_device);
@@ -1181,7 +1192,7 @@ pub fn main() {
     let mut player_x = 0.0;
     let mut player_y = 0.0;
     let mut game_ticks = 0u32;
-    let mut player_z = 0.0;
+    let mut player_z = 5.0;
 
     // Keyboard state variables
     let mut key_up = false;
@@ -1347,7 +1358,7 @@ pub fn main() {
         if key_r {
             player_x = 0.0;
             player_y = 0.0;
-            player_z = 0.0;
+            player_z = 5.0;
             mouse_drag_x = 0.0;
             mouse_drag_y = 0.0;
         }
@@ -1491,6 +1502,9 @@ pub fn main() {
                                 .unwrap()
                                 .name()
                                 .unwrap_or("no name");
+                            // if game_ticks % 200 == 0 && node.index() == 2 {
+                            //     println!("animation - {}", animation_name);
+                            // }
                             // TODO - This is resource intensive and should be optimized
                             // Maybe split up the for loops so it's not looping through all the animations inside all the nodes?
                             // Maybe cache the results of the animations? (calculated transforms and weights)
@@ -1563,20 +1577,36 @@ pub fn main() {
                                         (
                                             &AnimationOutput::Translation(previous_translation),
                                             &AnimationOutput::Translation(next_translation),
-                                        ) => Some(matrix_translate_multi(
-                                            previous_translation[0]
-                                                + interpolation_value
-                                                    * (next_translation[0]
-                                                        - previous_translation[0]),
-                                            previous_translation[1]
-                                                + interpolation_value
-                                                    * (next_translation[1]
-                                                        - previous_translation[1]),
-                                            previous_translation[2]
-                                                + interpolation_value
-                                                    * (next_translation[2]
-                                                        - previous_translation[2]),
-                                        )),
+                                        ) => {
+                                            let translate_matrix = Some(matrix_translate_multi(
+                                                previous_translation[0]
+                                                    + interpolation_value
+                                                        * (next_translation[0]
+                                                            - previous_translation[0]),
+                                                previous_translation[1]
+                                                    + interpolation_value
+                                                        * (next_translation[1]
+                                                            - previous_translation[1]),
+                                                previous_translation[2]
+                                                    + interpolation_value
+                                                        * (next_translation[2]
+                                                            - previous_translation[2]),
+                                            ));
+                                            if game_ticks % 200 == 0 {
+                                                println!(
+                                                    "translate_matrix for node {} is {:?}",
+                                                    node.index(),
+                                                    translate_matrix.unwrap()
+                                                );
+                                                println!(
+                                                    "flipped_matrix for node {} is {:?}",
+                                                    node.index(),
+                                                    flipped_matrix
+                                                );
+                                            }
+                                            translate_matrix
+                                            /* Some(IDENTITY_MATRIX) */
+                                        }
                                         (
                                             &AnimationOutput::Rotation(previous_rotation),
                                             &AnimationOutput::Rotation(
@@ -1655,6 +1685,8 @@ pub fn main() {
                                                         + scale_next_quaternion * next_rotation[3],
                                                 )
                                             })
+
+                                            /* Some(IDENTITY_MATRIX) */
                                         }
                                         (
                                             &AnimationOutput::Scale(previous_scale),
@@ -1670,6 +1702,9 @@ pub fn main() {
                                                 + interpolation_value
                                                     * (next_scale[2] - previous_scale[2]),
                                         )),
+                                        /* {
+                                            Some(IDENTITY_MATRIX)
+                                        } */
                                         (
                                             AnimationOutput::MorphTargetWeight(previous_weight),
                                             AnimationOutput::MorphTargetWeight(next_weight),
@@ -1733,6 +1768,10 @@ pub fn main() {
                                     //     &AnimationOutput::MorphTargetWeight(_weight) => IDENTITY_MATRIX,
                                     // };
 
+                                    // if game_ticks % 200 == 0 && node.index() == 2 {
+                                    //     println!("node {}", node.index());
+                                    // }
+
                                     // Apply to animation node
                                     if interpolated_transform.is_some() {
                                         // TODO not sure if correct multiplication order
@@ -1740,6 +1779,16 @@ pub fn main() {
                                             animation_full_matrix,
                                             interpolated_transform.unwrap(),
                                         );
+                                        // if game_ticks % 200 == 0 && node.index() == 2 {
+                                        //     println!(
+                                        //         "apply this matrix: {:?}",
+                                        //         interpolated_transform.unwrap()
+                                        //     );
+                                        //     println!(
+                                        //         "resulting in matrix: {:?}",
+                                        //         animation_full_matrix
+                                        //     );
+                                        // }
                                     }
                                 }
                             }
@@ -1748,11 +1797,18 @@ pub fn main() {
                     (animation_full_matrix, animated_morph_weights)
                 };
 
+                // let multiplied_transform_matrix_pre_animation =
+                let multiplied_transform_matrix = if animation_transform_matrix == IDENTITY_MATRIX {
+                    multiply_matrices(inherited_transform_matrix, flipped_matrix)
+                } else {
+                    multiply_matrices(inherited_transform_matrix, animation_transform_matrix)
+                };
+
                 // TODO - check if this is the right order, I don't have a good intuition about which matrix should come first
-                let multiplied_transform_matrix = multiply_matrices(
-                    multiplied_transform_matrix_pre_animation,
-                    animation_transform_matrix,
-                );
+                // let multiplied_transform_matrix = multiply_matrices(
+                //     multiplied_transform_matrix_pre_animation,
+                //     animation_transform_matrix,
+                // );
 
                 // Apply to joints
                 // for joint_matrix in joint_matrices_per_skin {
@@ -1763,9 +1819,9 @@ pub fn main() {
                 // TODO - not sure about this. might need to have a separate buffer for each skin?
                 // let skin = &model.skins.get(0).unwrap();
                 if let Some(skin) = &model.skins.first() {
-                    // Check that the joint isn't past the end of the lookup vector
+                    // Confirm the model has at least 1 skin
                     if let Some(joint_lookup_attempt) = skin.joint_lookup_vec.get(node.index()) {
-                        // Check that the joint
+                        // Check that the joint isn't past the end of the lookup vector
                         if let Some(joint_lookup_index) = joint_lookup_attempt {
                             let inverse_bind_matrix =
                                 skin.inverse_bind_matrices.get(*joint_lookup_index).unwrap();
@@ -1774,9 +1830,15 @@ pub fn main() {
                                 *inverse_bind_matrix,
                             );
                             joint_matrices[*joint_lookup_index] = joint_matrix;
-                            if game_ticks == 100 && node.index() == 369 {
-                                println!("{:?}", joint_matrix);
-                            }
+                            // if game_ticks % 200 == 0 && *joint_lookup_index == 4 {
+                            //     println!("node {} is joint {}", node.index(), joint_lookup_index);
+                            //     println!("inverse bind matrix: {:?}", inverse_bind_matrix);
+                            //     println!(
+                            //         "multiplied transform matrix: {:?}",
+                            //         multiplied_transform_matrix
+                            //     );
+                            //     println!("--> final joint_matrix: {:?}", joint_matrix);
+                            // }
                             // joint_matrices[*joint_lookup_index] = *inverse_bind_matrix;
                         }
                     }
@@ -1916,7 +1978,7 @@ pub fn main() {
                 if reset_button {
                     player_x = 0.0;
                     player_y = 0.0;
-                    player_z = 0.0;
+                    player_z = 5.0;
                     mouse_drag_x = 0.0;
                     mouse_drag_y = 0.0;
                 }
@@ -2140,6 +2202,163 @@ fn flip_matrix_diagonally(m: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
 
 fn quaternion_dot_product(a: [f32; 4], b: [f32; 4]) -> f32 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]
+}
+
+fn invert_matrix(a: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
+    // https://stackoverflow.com/a/155705
+    // Assumes the input matrix is a transformation matrix that ends in [0, 0, 0, 1]
+    [
+        [
+            a[0][0],
+            a[1][0],
+            a[2][0],
+            -a[0][0] * a[0][3] - a[1][0] * a[1][3] - a[2][0] * a[2][3],
+        ],
+        [
+            a[0][1],
+            a[1][1],
+            a[2][1],
+            -a[0][1] * a[0][3] - a[1][1] * a[1][3] - a[2][1] * a[2][3],
+        ],
+        [
+            a[0][2],
+            a[1][2],
+            a[2][2],
+            -a[0][2] * a[0][3] - a[1][2] * a[1][3] - a[2][2] * a[2][3],
+        ],
+        [0f32, 0f32, 0f32, 1f32],
+    ]
+    // IDENTITY_MATRIX
+}
+
+fn _invert_matrix_arbitrary(a: [[f32; 4]; 4]) -> Option<[[f32; 4]; 4]> {
+    // Function to invert an arbitrary 4x4 matrix
+    // https://stackoverflow.com/a/1148405
+    let inverted_matrix = [
+        [
+            a[1][1] * a[2][2] * a[3][3] - a[1][1] * a[2][3] * a[3][2] - a[2][1] * a[1][2] * a[3][3]
+                + a[2][1] * a[1][3] * a[3][2]
+                + a[3][1] * a[1][2] * a[2][3]
+                - a[3][1] * a[1][3] * a[2][2],
+            -a[0][1] * a[2][2] * a[3][3]
+                + a[0][1] * a[2][3] * a[3][2]
+                + a[2][1] * a[0][2] * a[3][3]
+                - a[2][1] * a[0][3] * a[3][2]
+                - a[3][1] * a[0][2] * a[2][3]
+                + a[3][1] * a[0][3] * a[2][2],
+            a[0][1] * a[1][2] * a[3][3] - a[0][1] * a[1][3] * a[3][2] - a[1][1] * a[0][2] * a[3][3]
+                + a[1][1] * a[0][3] * a[3][2]
+                + a[3][1] * a[0][2] * a[1][3]
+                - a[3][1] * a[0][3] * a[1][2],
+            -a[0][1] * a[1][2] * a[2][3]
+                + a[0][1] * a[1][3] * a[2][2]
+                + a[1][1] * a[0][2] * a[2][3]
+                - a[1][1] * a[0][3] * a[2][2]
+                - a[2][1] * a[0][2] * a[1][3]
+                + a[2][1] * a[0][3] * a[1][2],
+        ],
+        [
+            -a[1][0] * a[2][2] * a[3][3]
+                + a[1][0] * a[2][3] * a[3][2]
+                + a[2][0] * a[1][2] * a[3][3]
+                - a[2][0] * a[1][3] * a[3][2]
+                - a[3][0] * a[1][2] * a[2][3]
+                + a[3][0] * a[1][3] * a[2][2],
+            a[0][0] * a[2][2] * a[3][3] - a[0][0] * a[2][3] * a[3][2] - a[2][0] * a[0][2] * a[3][3]
+                + a[2][0] * a[0][3] * a[3][2]
+                + a[3][0] * a[0][2] * a[2][3]
+                - a[3][0] * a[0][3] * a[2][2],
+            -a[0][0] * a[1][2] * a[3][3]
+                + a[0][0] * a[1][3] * a[3][2]
+                + a[1][0] * a[0][2] * a[3][3]
+                - a[1][0] * a[0][3] * a[3][2]
+                - a[3][0] * a[0][2] * a[1][3]
+                + a[3][0] * a[0][3] * a[1][2],
+            a[0][0] * a[1][2] * a[2][3] - a[0][0] * a[1][3] * a[2][2] - a[1][0] * a[0][2] * a[2][3]
+                + a[1][0] * a[0][3] * a[2][2]
+                + a[2][0] * a[0][2] * a[1][3]
+                - a[2][0] * a[0][3] * a[1][2],
+        ],
+        [
+            a[1][0] * a[2][1] * a[3][3] - a[1][0] * a[2][3] * a[3][1] - a[2][0] * a[1][1] * a[3][3]
+                + a[2][0] * a[1][3] * a[3][1]
+                + a[3][0] * a[1][1] * a[2][3]
+                - a[3][0] * a[1][3] * a[2][1],
+            -a[0][0] * a[2][1] * a[3][3]
+                + a[0][0] * a[2][3] * a[3][1]
+                + a[2][0] * a[0][1] * a[3][3]
+                - a[2][0] * a[0][3] * a[3][1]
+                - a[3][0] * a[0][1] * a[2][3]
+                + a[3][0] * a[0][3] * a[2][1],
+            a[0][0] * a[1][1] * a[3][3] - a[0][0] * a[1][3] * a[3][1] - a[1][0] * a[0][1] * a[3][3]
+                + a[1][0] * a[0][3] * a[3][1]
+                + a[3][0] * a[0][1] * a[1][3]
+                - a[3][0] * a[0][3] * a[1][1],
+            -a[0][0] * a[1][1] * a[2][3]
+                + a[0][0] * a[1][3] * a[2][1]
+                + a[1][0] * a[0][1] * a[2][3]
+                - a[1][0] * a[0][3] * a[2][1]
+                - a[2][0] * a[0][1] * a[1][3]
+                + a[2][0] * a[0][3] * a[1][1],
+        ],
+        [
+            -a[1][0] * a[2][1] * a[3][2]
+                + a[1][0] * a[2][2] * a[3][1]
+                + a[2][0] * a[1][1] * a[3][2]
+                - a[2][0] * a[1][2] * a[3][1]
+                - a[3][0] * a[1][1] * a[2][2]
+                + a[3][0] * a[1][2] * a[2][1],
+            a[0][0] * a[2][1] * a[3][2] - a[0][0] * a[2][2] * a[3][1] - a[2][0] * a[0][1] * a[3][2]
+                + a[2][0] * a[0][2] * a[3][1]
+                + a[3][0] * a[0][1] * a[2][2]
+                - a[3][0] * a[0][2] * a[2][1],
+            -a[0][0] * a[1][1] * a[3][2]
+                + a[0][0] * a[1][2] * a[3][1]
+                + a[1][0] * a[0][1] * a[3][2]
+                - a[1][0] * a[0][2] * a[3][1]
+                - a[3][0] * a[0][1] * a[1][2]
+                + a[3][0] * a[0][2] * a[1][1],
+            a[0][0] * a[1][1] * a[2][2] - a[0][0] * a[1][2] * a[2][1] - a[1][0] * a[0][1] * a[2][2]
+                + a[1][0] * a[0][2] * a[2][1]
+                + a[2][0] * a[0][1] * a[1][2]
+                - a[2][0] * a[0][2] * a[1][1],
+        ],
+    ];
+    let determinant = a[0][0] * inverted_matrix[0][0]
+        + a[0][1] * inverted_matrix[1][0]
+        + a[0][2] * inverted_matrix[2][0]
+        + a[0][3] * inverted_matrix[3][0];
+    if determinant == 0f32 {
+        return None;
+    }
+    let determinant_reciprocal = 1f32 / determinant;
+    // Return the inverted matrix with each value divided by the reciprocal of the determinant
+    Some([
+        [
+            inverted_matrix[0][0] / determinant_reciprocal,
+            inverted_matrix[0][1] / determinant_reciprocal,
+            inverted_matrix[0][2] / determinant_reciprocal,
+            inverted_matrix[0][3] / determinant_reciprocal,
+        ],
+        [
+            inverted_matrix[1][0] / determinant_reciprocal,
+            inverted_matrix[1][1] / determinant_reciprocal,
+            inverted_matrix[1][2] / determinant_reciprocal,
+            inverted_matrix[1][3] / determinant_reciprocal,
+        ],
+        [
+            inverted_matrix[2][0] / determinant_reciprocal,
+            inverted_matrix[2][1] / determinant_reciprocal,
+            inverted_matrix[2][2] / determinant_reciprocal,
+            inverted_matrix[2][3] / determinant_reciprocal,
+        ],
+        [
+            inverted_matrix[3][0] / determinant_reciprocal,
+            inverted_matrix[3][1] / determinant_reciprocal,
+            inverted_matrix[3][2] / determinant_reciprocal,
+            inverted_matrix[3][3] / determinant_reciprocal,
+        ],
+    ])
 }
 
 #[cfg(test)]
