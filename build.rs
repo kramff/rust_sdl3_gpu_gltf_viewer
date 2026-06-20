@@ -1,15 +1,21 @@
 use std::process::Command;
 
 fn main() {
-    let vertex_output = Command::new("cmd")
-        .args([
-            "/C",
-            // "glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv",
-            "glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv -g",
-        ])
-        .output()
-        // .expect("failed vertex shader");
-        .unwrap();
+    // "glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv",
+    let vertex_shader_compile_command =
+        "glslc -fshader-stage=vertex shaders/vertex.glsl -o shaders/vertex.spv -g";
+    let vertex_output = if cfg!(target_os = "windows") {
+        Command::new("cmd")
+            .args(["/C", vertex_shader_compile_command])
+            .output()
+            .unwrap()
+    } else {
+        Command::new("sh")
+            .arg("-c")
+            .arg(vertex_shader_compile_command)
+            .output()
+            .unwrap()
+    };
     if vertex_output.stderr.len() > 0 {
         println!(
             "cargo::error=Output from vertex shader compile: {:?}",
@@ -17,15 +23,21 @@ fn main() {
                 .unwrap_or(String::from("Issue in vertex shader?"))
         );
     }
-    let fragment_output = Command::new("cmd")
-        .args([
-            "/C",
-            // "glslc -fshader-stage=fragment shaders/fragment.glsl -o shaders/fragment.spv",
-            "glslc -fshader-stage=fragment shaders/fragment.glsl -o shaders/fragment.spv -g",
-        ])
-        .output()
-        // .expect("failed fragment shader");
-        .unwrap();
+    // "glslc -fshader-stage=fragment shaders/fragment.glsl -o shaders/fragment.spv",
+    let fragment_shader_compile_command =
+        "glslc -fshader-stage=fragment shaders/fragment.glsl -o shaders/fragment.spv -g";
+    let fragment_output = if cfg!(target_os = "windows") {
+        Command::new("cmd")
+            .args(["/C", fragment_shader_compile_command])
+            .output()
+            .unwrap()
+    } else {
+        Command::new("sh")
+            .arg("-c")
+            .arg(fragment_shader_compile_command)
+            .output()
+            .unwrap()
+    };
     if fragment_output.stderr.len() > 0 {
         println!(
             "cargo::error=Output from fragment shader compile: {:?}",

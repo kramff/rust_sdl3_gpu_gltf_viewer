@@ -145,11 +145,11 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
             //         inverse_bind_matrices.len()
             //     );
             // }
-            if let Some(skeleton_node) = skin.skeleton() {
-                println!("Skeleton node is index {}", skeleton_node.index());
-            } else {
-                println!("Skeleton is root node");
-            }
+            // if let Some(skeleton_node) = skin.skeleton() {
+            //     println!("Skeleton node is index {}", skeleton_node.index());
+            // } else {
+            //     println!("Skeleton is root node");
+            // }
             // Get the skeleton nodes used as joints for this skin
             let temp_joint_vec: Vec<usize> = skin
                 .joints()
@@ -159,7 +159,7 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
                     joint.index()
                 })
                 .collect();
-            println!("number of joints in this skin: {}", temp_joint_vec.len());
+            // println!("number of joints in this skin: {}", temp_joint_vec.len());
             // println!("{:?}", &temp_joint_vec);
             // Loop through nodes in the document to set up a reverse lookup array thingy
             let joint_lookup_vec: Vec<Option<usize>> = document
@@ -174,14 +174,14 @@ fn load_model_and_copy_to_gpu<'a>(model_path: &str, gpu_device: &Device) -> Mode
             // dbg!(&joint_lookup_vec);
             // Looks like: [ Some(6), Some(5), Some(14), Some(19), None, None, None, None, None ... ]
             // Or like: [None, None, None, None, Some(23), Some(0), Some(15), None, None, None ...]
-            println!(
-                "this skin: joint lookup vec has: {}",
-                joint_lookup_vec.len()
-            );
-            println!(
-                "this skin, inverse bind matrices has: {}",
-                inverse_bind_matrices.len()
-            );
+            // println!(
+            //     "this skin: joint lookup vec has: {}",
+            //     joint_lookup_vec.len()
+            // );
+            // println!(
+            //     "this skin, inverse bind matrices has: {}",
+            //     inverse_bind_matrices.len()
+            // );
             SkinData {
                 joint_lookup_vec: joint_lookup_vec,
                 inverse_bind_matrices: inverse_bind_matrices,
@@ -1456,7 +1456,7 @@ pub fn main() {
             let mut remaining_node_transform_pairs = Vec::new();
 
             for node in scene.nodes() {
-                // Start with identity matrix. The pair is: (current node, current transformation)
+                // Start with identity matrix. The tuple is: (current node, current transformation)
                 remaining_node_transform_pairs.push((node, IDENTITY_MATRIX));
 
                 // Start with current player rotation
@@ -1593,16 +1593,16 @@ pub fn main() {
                                                             - previous_translation[2]),
                                             ));
                                             if game_ticks % 200 == 0 {
-                                                println!(
-                                                    "translate_matrix for node {} is {:?}",
-                                                    node.index(),
-                                                    translate_matrix.unwrap()
-                                                );
-                                                println!(
-                                                    "flipped_matrix for node {} is {:?}",
-                                                    node.index(),
-                                                    flipped_matrix
-                                                );
+                                                // println!(
+                                                //     "translate_matrix for node {} is {:?}",
+                                                //     node.index(),
+                                                //     translate_matrix.unwrap()
+                                                // );
+                                                // println!(
+                                                //     "flipped_matrix for node {} is {:?}",
+                                                //     node.index(),
+                                                //     flipped_matrix
+                                                // );
                                             }
                                             translate_matrix
                                             /* Some(IDENTITY_MATRIX) */
@@ -2028,7 +2028,7 @@ fn _get_array_of_500_identity_matrix() -> [[[f32; 4]; 4]; 500] {
     array::from_fn(|_| IDENTITY_MATRIX)
 }
 
-fn lerp_matrices(a: [[f32; 4]; 4], b: [[f32; 4]; 4], t: f32) -> [[f32; 4]; 4] {
+fn _lerp_matrices(a: [[f32; 4]; 4], b: [[f32; 4]; 4], t: f32) -> [[f32; 4]; 4] {
     let s = 1.0f32 - t;
     [
         [
