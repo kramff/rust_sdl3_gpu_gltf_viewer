@@ -372,6 +372,20 @@
   <b>Animating the gltf model</b>
   <br>
 
+  I mostly learned from <a href="https://github.khronos.org/glTF-Tutorials/gltfTutorial/">these tutorials</a>. In GLTF,
+  animations can either be on the transformations of a node (meaning the translation, rotation, or scale, or multiple of
+  those at once), or they can be "morph targets", or "vertex skinning".
+
+  Transformation animations are relatively straightforward. During the animation, the nodes of the model are transformed
+  by an animation by translating, rotating, or scaling. Importantly, if the node already has a transformation, the
+  animation transformation "overrides" the original transformation. So if the node normally has a transform of
+  translating by 1 on the x axis, and an animation causes animates it between translating 0.9 and 1.1 on the x axis, the
+  original transformation should not also apply because then it would be translating by 1.9 and 2.1, not 0.9 and 1.1.
+
+  Morph targets means that the vertices all move by some amount to adjusted positions. All the vertices (that are
+  affected by the animation) will have an offset for each morph target
+
+
   <ul>
     <li></li>
     <li></li>
